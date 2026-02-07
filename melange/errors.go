@@ -1,6 +1,9 @@
 package melange
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 // Sentinel errors for common failure modes during permission checks.
 // These errors indicate setup issues, not permission denials. Permission checks
@@ -34,6 +37,12 @@ var (
 	// Cycles in implied-by or parent relations would cause infinite recursion at runtime.
 	// Fix the schema by removing one of the relationships forming the cycle.
 	ErrCyclicSchema = errors.New("melange: cyclic schema")
+
+	// ErrBulkCheckDenied is returned by BulkCheckResults.AllOrError when any
+	// check in the batch was denied. Use errors.Is(err, ErrBulkCheckDenied) or
+	// IsBulkCheckDeniedErr to detect this. The concrete type is *BulkCheckDeniedError
+	// which carries the first denied check's details.
+	ErrBulkCheckDenied = errors.New("melange: bulk check denied")
 )
 
 // IsNoTuplesTableErr returns true if err is or wraps ErrNoTuplesTable.
@@ -100,6 +109,33 @@ func (e *ValidationError) Error() string {
 func (e *ValidationError) ErrorCode() int {
 	return e.Code
 }
+
+// BulkCheckDeniedError is the concrete error returned by BulkCheckResults.AllOrError
+// when at least one check in the batch was denied. It wraps ErrBulkCheckDenied.
+type BulkCheckDeniedError struct {
+	// Subject is the subject of the first denied check.
+	Subject Object
+	// Relation is the relation of the first denied check.
+	Relation Relation
+	// Object is the object of the first denied check.
+	Object Object
+	// Index is the position of the first denied check in the original request order.
+	Index int
+	// Total is the total number of denied checks in the batch.
+	Total int
+}
+
+// Error implements the error interface.
+func (e *BulkCheckDeniedError) Error() string {
+	return fmt.Sprintf("permission denied: %s %s %s (%d checks denied, first at index %d)",
+		e.Subject, e.Relation, e.Object, e.Total, e.Index)
+}
+
+// Unwrap returns ErrBulkCheckDenied for use with errors.Is.
+func (e *BulkCheckDeniedError) Unwrap() error { return ErrBulkCheckDenied }
+
+// IsBulkCheckDeniedErr returns true if err is or wraps ErrBulkCheckDenied.
+func IsBulkCheckDeniedErr(err error) bool { return errors.Is(err, ErrBulkCheckDenied) }
 
 // IsValidationError returns true if err is or wraps a ValidationError.
 func IsValidationError(err error) bool {
