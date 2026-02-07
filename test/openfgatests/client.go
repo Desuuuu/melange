@@ -25,6 +25,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/lib/pq"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/grpc"
 
@@ -619,6 +620,66 @@ func removeTuple(tuples []*openfgav1.TupleKey, toRemove *openfgav1.TupleKeyWitho
 		}
 	}
 	return result
+}
+
+// CheckBulk evaluates multiple permission checks in a single SQL call using
+// check_permission_bulk. It takes a store ID and a slice of check assertions
+// (without contextual tuples or error codes), builds parallel arrays, and
+// returns a map from assertion index to whether the check was allowed.
+func (c *Client) CheckBulk(ctx context.Context, storeID string, assertions []*CheckAssertion) (map[int]bool, error) {
+	store, ok := c.storeByID(storeID)
+	if !ok {
+		return nil, fmt.Errorf("store not found: %s", storeID)
+	}
+
+	n := len(assertions)
+	subjectTypes := make([]string, n)
+	subjectIDs := make([]string, n)
+	relations := make([]string, n)
+	objectTypes := make([]string, n)
+	objectIDs := make([]string, n)
+
+	for i, a := range assertions {
+		tk := a.Tuple
+		subject, err := parseSubject(tk.GetUser())
+		if err != nil {
+			return nil, fmt.Errorf("parsing subject for assertion %d: %w", i, err)
+		}
+		object, err := parseObject(tk.GetObject())
+		if err != nil {
+			return nil, fmt.Errorf("parsing object for assertion %d: %w", i, err)
+		}
+		subjectTypes[i] = string(subject.Type)
+		subjectIDs[i] = subject.ID
+		relations[i] = tk.GetRelation()
+		objectTypes[i] = string(object.Type)
+		objectIDs[i] = object.ID
+	}
+
+	rows, err := store.db.QueryContext(ctx,
+		"SELECT idx, allowed FROM check_permission_bulk($1, $2, $3, $4, $5)",
+		pq.Array(subjectTypes), pq.Array(subjectIDs), pq.Array(relations),
+		pq.Array(objectTypes), pq.Array(objectIDs),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("check_permission_bulk query: %w", err)
+	}
+	defer rows.Close()
+
+	results := make(map[int]bool, n)
+	for rows.Next() {
+		var idx, allowed int
+		if err := rows.Scan(&idx, &allowed); err != nil {
+			return nil, fmt.Errorf("scanning bulk result: %w", err)
+		}
+		// Convert 1-based ordinality to 0-based index
+		results[idx-1] = allowed == 1
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating bulk results: %w", err)
+	}
+
+	return results, nil
 }
 
 // Ensure Client implements the interface at compile time.

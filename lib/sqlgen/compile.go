@@ -54,6 +54,10 @@ type GeneratedSQL struct {
 
 	// DispatcherNoWildcard contains the check_permission_no_wildcard dispatcher.
 	DispatcherNoWildcard string
+
+	// BulkDispatcher contains the check_permission_bulk function that evaluates
+	// multiple permission checks in a single SQL call using UNION ALL branches.
+	BulkDispatcher string
 }
 
 // GenerateSQL generates specialized SQL functions for all relations in the schema.
@@ -99,6 +103,9 @@ func GenerateSQL(analyses []RelationAnalysis, inline InlineSQLData) (GeneratedSQ
 	if err != nil {
 		return GeneratedSQL{}, fmt.Errorf("generating no-wildcard dispatcher: %w", err)
 	}
+
+	// Generate bulk dispatcher
+	result.BulkDispatcher = generateBulkDispatcher(analyses)
 
 	return result, nil
 }
@@ -189,6 +196,7 @@ func CollectFunctionNames(analyses []RelationAnalysis) []string {
 		"check_permission_internal",
 		"check_permission_no_wildcard",
 		"check_permission_no_wildcard_internal",
+		"check_permission_bulk",
 		"list_accessible_objects",
 		"list_accessible_subjects",
 	)

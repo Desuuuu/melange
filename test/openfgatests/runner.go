@@ -18,6 +18,18 @@ import (
 
 const writeMaxChunkSize = 40
 
+// bulkEligibleAssertions returns check assertions that can be evaluated via
+// check_permission_bulk: those without error codes or contextual tuples.
+func bulkEligibleAssertions(assertions []*CheckAssertion) []*CheckAssertion {
+	var eligible []*CheckAssertion
+	for _, a := range assertions {
+		if a.ErrorCode == 0 && len(a.ContextualTuples) == 0 {
+			eligible = append(eligible, a)
+		}
+	}
+	return eligible
+}
+
 // TestCase represents a single test from the OpenFGA test suite.
 type TestCase struct {
 	Name   string   `json:"name"`
@@ -365,6 +377,26 @@ func BenchTest(b *testing.B, tc TestCase) {
 		})
 	}
 
+	// Benchmark BulkCheck operations
+	if len(checkOps) > 0 {
+		var allCheckAssertions []*CheckAssertion
+		for _, op := range checkOps {
+			allCheckAssertions = append(allCheckAssertions, op.assertion)
+		}
+		bulkAssertions := bulkEligibleAssertions(allCheckAssertions)
+		if len(bulkAssertions) > 0 {
+			b.Run("BulkCheck", func(b *testing.B) {
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					_, err := client.CheckBulk(ctx, storeID, bulkAssertions)
+					if err != nil {
+						b.Fatalf("bulk check failed: %v", err)
+					}
+				}
+			})
+		}
+	}
+
 	// Benchmark ListObjects operations
 	if len(listObjOps) > 0 {
 		b.Run("ListObjects", func(b *testing.B) {
@@ -532,6 +564,25 @@ func RunTest(t *testing.T, _ *Client, tc TestCase) {
 						}
 					})
 				}
+
+				// Run bulk check assertions
+				t.Run("bulk_check", func(t *testing.T) {
+					bulkAssertions := bulkEligibleAssertions(stage.CheckAssertions)
+					if len(bulkAssertions) == 0 {
+						t.Skip("no assertions eligible for bulk check")
+					}
+					results, err := client.CheckBulk(ctx, storeID, bulkAssertions)
+					require.NoError(t, err)
+					for i, a := range bulkAssertions {
+						name := a.Name
+						if name == "" {
+							name = fmt.Sprintf("check_%d", i)
+						}
+						require.Equal(t, a.Expectation, results[i],
+							"bulk check mismatch for %s (user=%s relation=%s object=%s)",
+							name, a.Tuple.GetUser(), a.Tuple.GetRelation(), a.Tuple.GetObject())
+					}
+				})
 
 				// Run list objects assertions
 				for i, assertion := range stage.ListObjectsAssertions {
