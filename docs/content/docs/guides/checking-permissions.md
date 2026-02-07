@@ -651,68 +651,111 @@ async function checkWithRequestCache(
 
 {{< /tabs >}}
 
-### 2. Batch Checks Efficiently
+### 2. Batch Checks with Bulk API
 
-For multiple checks, use a shared cache:
+Use `NewBulkCheck` to check many permissions in a single SQL call instead of looping over individual checks:
 
-{{< tabs items="Go,TypeScript" >}}
+{{< tabs items="Go,TypeScript,SQL" >}}
 
 {{< tab >}}
 ```go
-cache := melange.NewCache()
-checker := melange.NewChecker(db, melange.WithCache(cache))
+bulk := checker.NewBulkCheck(ctx)
 
-// Multiple checks reuse cache
+// Queue checks — all execute in one SQL call
 for _, repo := range repos {
-    allowed, _ := checker.Check(ctx, user, "can_read", repo)
-    if allowed {
-        visibleRepos = append(visibleRepos, repo)
-    }
+    bulk.Add(user, "can_read", repo)
+}
+
+// Or use AddMany for one subject+relation across multiple objects
+bulk.AddMany(user, "can_read", repos...)
+
+results, err := bulk.Execute()
+if err != nil {
+    return err
+}
+
+// Check aggregate results
+if results.All() {
+    // Every check was allowed
+}
+if results.Any() {
+    // At least one check was allowed
+}
+
+// Iterate individual results
+for _, r := range results.Allowed() {
+    fmt.Printf("%s:%s is accessible\n", r.Object().Type, r.Object().ID)
+}
+
+// Use AllOrError for guard-style checks
+if err := results.AllOrError(); err != nil {
+    return err // Returns BulkCheckDeniedError with details
+}
+```
+
+Use `AddWithID` to tag checks with meaningful identifiers:
+
+```go
+bulk := checker.NewBulkCheck(ctx)
+bulk.AddWithID("read-repo", user, "can_read", repo)
+bulk.AddWithID("write-repo", user, "can_write", repo)
+bulk.AddWithID("admin-repo", user, "admin", repo)
+
+results, err := bulk.Execute()
+if err != nil {
+    return err
+}
+
+// Look up results by ID
+if r := results.GetByID("write-repo"); r != nil && r.IsAllowed() {
+    // User can write
 }
 ```
 {{< /tab >}}
 
 {{< tab >}}
 ```typescript
-const cache = new Map<string, boolean>();
+// Check multiple permissions in one call
+const { rows } = await pool.query(
+  'SELECT idx, allowed FROM check_permission_bulk($1, $2, $3, $4, $5)',
+  [
+    ['user', 'user', 'user'],           // subject types
+    ['123', '123', '123'],               // subject IDs
+    ['viewer', 'editor', 'admin'],       // relations
+    ['document', 'document', 'document'],// object types
+    ['456', '456', '456'],               // object IDs
+  ]
+);
 
-async function checkBatch(
-  subjectType: string,
-  subjectId: string,
-  relation: string,
-  objectType: string,
-  objectIds: string[]
-): Promise<string[]> {
-  const accessible: string[] = [];
-
-  for (const objectId of objectIds) {
-    const key = `${subjectType}:${subjectId}:${relation}:${objectType}:${objectId}`;
-
-    let allowed: boolean;
-    if (cache.has(key)) {
-      allowed = cache.get(key)!;
-    } else {
-      allowed = await checkPermission(
-        subjectType,
-        subjectId,
-        relation,
-        objectType,
-        objectId
-      );
-      cache.set(key, allowed);
-    }
-
-    if (allowed) {
-      accessible.push(objectId);
-    }
-  }
-
-  return accessible;
+for (const row of rows) {
+  console.log(`Check ${row.idx}: ${row.allowed === 1 ? 'allowed' : 'denied'}`);
 }
 ```
 {{< /tab >}}
 
+{{< tab >}}
+```sql
+-- Check multiple permissions in a single call
+SELECT idx, allowed
+FROM check_permission_bulk(
+    ARRAY['user', 'user', 'user'],
+    ARRAY['123', '123', '123'],
+    ARRAY['viewer', 'editor', 'admin'],
+    ARRAY['document', 'document', 'document'],
+    ARRAY['456', '456', '456']
+);
+```
+{{< /tab >}}
+
 {{< /tabs >}}
+
+{{< callout type="info" >}}
+**Deduplication**: Duplicate checks within a batch are automatically deduplicated — only unique permission tuples are sent to the database. Results are fanned out to all original positions.
+{{< /callout >}}
+
+{{< callout type="warning" >}}
+**Size limit**: A single bulk check supports up to 10,000 checks (`MaxBulkCheckSize`). The builder panics if this limit is exceeded.
+{{< /callout >}}
 
 ### 3. Use ListObjects for Filtering
 

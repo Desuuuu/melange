@@ -12,6 +12,7 @@ When you run `melange migrate`, Melange generates:
 | Function | Purpose |
 |----------|---------|
 | `check_permission` | Check if a subject has a relation on an object |
+| `check_permission_bulk` | Check multiple permissions in a single call |
 | `list_accessible_objects` | List all objects a subject can access (with pagination) |
 | `list_accessible_subjects` | List all subjects with access to an object (with pagination) |
 
@@ -67,6 +68,85 @@ SELECT
          THEN true ELSE false END AS can_edit
 FROM documents d
 WHERE check_permission('user', '123', 'viewer', 'document', d.id::text) = 1;
+```
+
+## check_permission_bulk
+
+Checks multiple permissions in a single SQL call. Each position across the input arrays forms one check request, and results are returned as a table.
+
+### Signature
+
+```sql
+check_permission_bulk(
+    p_subject_types TEXT[],
+    p_subject_ids TEXT[],
+    p_relations TEXT[],
+    p_object_types TEXT[],
+    p_object_ids TEXT[]
+) RETURNS TABLE(idx INTEGER, allowed INTEGER)
+```
+
+### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `p_subject_types` | TEXT[] | Array of subject types (e.g., `ARRAY['user', 'user']`) |
+| `p_subject_ids` | TEXT[] | Array of subject IDs |
+| `p_relations` | TEXT[] | Array of relations to check |
+| `p_object_types` | TEXT[] | Array of object types |
+| `p_object_ids` | TEXT[] | Array of object IDs |
+
+{{< callout type="warning" >}}
+All five arrays **must** be the same length. Each position across the arrays forms one check request. For example, position 1 checks whether `p_subject_types[1]:p_subject_ids[1]` has `p_relations[1]` on `p_object_types[1]:p_object_ids[1]`.
+{{< /callout >}}
+
+### Return Value
+
+Returns a table with two columns:
+- `idx` — 1-based position corresponding to the input arrays
+- `allowed` — `1` for access granted, `0` for access denied
+
+One row is returned per input check, in index order.
+
+### Examples
+
+```sql
+-- Check two permissions in a single call
+SELECT idx, allowed
+FROM check_permission_bulk(
+    ARRAY['user', 'user'],
+    ARRAY['123', '123'],
+    ARRAY['viewer', 'editor'],
+    ARRAY['document', 'document'],
+    ARRAY['456', '789']
+);
+-- Returns:
+-- idx | allowed
+-- ----+---------
+--   1 |       1
+--   2 |       0
+
+-- Mixed object types and relations
+SELECT idx, allowed
+FROM check_permission_bulk(
+    ARRAY['user', 'user', 'team'],
+    ARRAY['123', '123', '456'],
+    ARRAY['viewer', 'can_read', 'member'],
+    ARRAY['document', 'repository', 'organization'],
+    ARRAY['doc-1', 'repo-1', 'org-1']
+);
+
+-- Use results in a query by joining
+SELECT d.id, d.title, b.allowed
+FROM documents d
+JOIN check_permission_bulk(
+    ARRAY(SELECT 'user' FROM documents),
+    ARRAY(SELECT '123' FROM documents),
+    ARRAY(SELECT 'viewer' FROM documents),
+    ARRAY(SELECT 'document' FROM documents),
+    ARRAY(SELECT id::text FROM documents)
+) b ON d.id = b.idx
+ORDER BY d.id;
 ```
 
 ## list_accessible_objects
