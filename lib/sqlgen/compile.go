@@ -54,6 +54,10 @@ type GeneratedSQL struct {
 
 	// DispatcherNoWildcard contains the check_permission_no_wildcard dispatcher.
 	DispatcherNoWildcard string
+
+	// BulkDispatcher contains the check_permission_bulk function that evaluates
+	// multiple permission checks in a single SQL call using UNION ALL branches.
+	BulkDispatcher string
 }
 
 // GenerateSQL generates specialized SQL functions for all relations in the schema.
@@ -99,6 +103,9 @@ func GenerateSQL(analyses []RelationAnalysis, inline InlineSQLData) (GeneratedSQ
 	if err != nil {
 		return GeneratedSQL{}, fmt.Errorf("generating no-wildcard dispatcher: %w", err)
 	}
+
+	// Generate bulk dispatcher
+	result.BulkDispatcher = generateBulkDispatcher(analyses)
 
 	return result, nil
 }
@@ -151,9 +158,12 @@ type DispatcherData struct {
 // DispatcherCase represents a single CASE WHEN branch in the dispatcher.
 // Each case routes a specific (object_type, relation) pair to its specialized function.
 type DispatcherCase struct {
-	ObjectType        string
-	Relation          string
-	CheckFunctionName string
+	ObjectType          string
+	Relation            string
+	CheckFunctionName   string
+	Inlineable          bool     // true if simple direct-assignment only (bulk dispatcher can inline EXISTS)
+	DirectSubjectTypes  []string // subject types allowed for direct tuples (used in inline)
+	SatisfyingRelations []string // relations in closure that satisfy this one (used in inline userset check)
 }
 
 // CollectFunctionNames returns all function names that will be generated for the given analyses.
@@ -189,6 +199,7 @@ func CollectFunctionNames(analyses []RelationAnalysis) []string {
 		"check_permission_internal",
 		"check_permission_no_wildcard",
 		"check_permission_no_wildcard_internal",
+		"check_permission_bulk",
 		"list_accessible_objects",
 		"list_accessible_subjects",
 	)

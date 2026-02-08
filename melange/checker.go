@@ -224,6 +224,13 @@ func (c *Checker) Check(ctx context.Context, subject SubjectLike, relation Relat
 	return allowed, err
 }
 
+// NewBulkCheck starts a bulk permission check builder.
+// Add checks with Add/AddWithID, then call Execute to run them all in a single
+// SQL call using check_permission_bulk. Results are cached and deduplicated.
+func (c *Checker) NewBulkCheck(ctx context.Context) *BulkCheckBuilder {
+	return &BulkCheckBuilder{checker: c, ctx: ctx, ids: make(map[string]struct{})}
+}
+
 // CheckWithContextualTuples returns true if subject has the relation on object,
 // using the provided contextual tuples for this call only.
 // Contextual tuples are validated against the loaded model before evaluation.

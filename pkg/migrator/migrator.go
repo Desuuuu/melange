@@ -162,6 +162,13 @@ func (m *Migrator) applyGeneratedSQL(ctx context.Context, db Execer, gen Generat
 		}
 	}
 
+	// Apply bulk dispatcher
+	if gen.BulkDispatcher != "" {
+		if _, err := db.ExecContext(ctx, gen.BulkDispatcher); err != nil {
+			return fmt.Errorf("applying bulk dispatcher: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -603,6 +610,9 @@ func (m *Migrator) outputDryRun(w io.Writer, melangeVersion, schemaChecksum stri
 	}
 	if generatedSQL.DispatcherNoWildcard != "" {
 		_, _ = fmt.Fprintf(w, "%s\n\n", generatedSQL.DispatcherNoWildcard)
+	}
+	if generatedSQL.BulkDispatcher != "" {
+		_, _ = fmt.Fprintf(w, "%s\n\n", generatedSQL.BulkDispatcher)
 	}
 
 	// List objects functions

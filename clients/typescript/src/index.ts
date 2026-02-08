@@ -11,7 +11,8 @@
 export { Checker, DecisionAllow, DecisionDeny } from './checker.js';
 export type { CheckerOptions } from './checker.js';
 export { Cache, NoopCache, MemoryCache } from './cache.js';
-export { MelangeError, NotFoundError, ValidationError } from './errors.js';
+export { MelangeError, NotFoundError, ValidationError, BulkCheckDeniedError, isBulkCheckDeniedError } from './errors.js';
+export { BulkCheckBuilder, BulkCheckResult, BulkCheckResults, MAX_BULK_CHECK_SIZE } from './bulk-check.js';
 export type { Queryable, QueryResult } from './database.js';
 export { validateObject, validateRelation } from './validator.js';
 export type {
