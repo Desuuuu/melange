@@ -544,6 +544,11 @@ test-drivers:
 test-ts-drivers:
     cd clients/typescript && pnpm install && pnpm test -- --grep "Driver Compatibility"
 
+# Run TypeScript unit tests only (no database required)
+[group('Test')]
+test-ts-unit:
+    cd clients/typescript && pnpm install && pnpm test:unit
+
 # Run TypeScript tests (requires pnpm and database)
 [group('Test')]
 test-ts:
