@@ -43,6 +43,7 @@
     "@types/pg": "^8.11.0",
     "@vitest/coverage-v8": "^2.1.8",
     "pg": "^8.13.1",
+    "postgres": "^3.4.8",
     "typescript": "^5.0.0",
     "vitest": "^2.1.8"
   },

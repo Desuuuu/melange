@@ -534,6 +534,16 @@ test-integration:
 test-integration-all:
     ./scripts/integration-test-runner.sh
 
+# Run Go driver compatibility tests (requires Docker)
+[group('Test')]
+test-drivers:
+    cd {{TEST}} && {{GO_TEST}} -timeout 5m -run TestDriverCompatibility ./...
+
+# Run TypeScript driver compatibility tests (requires pnpm and database)
+[group('Test')]
+test-ts-drivers:
+    cd clients/typescript && pnpm install && pnpm test -- --grep "Driver Compatibility"
+
 # Run TypeScript tests (requires pnpm and database)
 [group('Test')]
 test-ts:
