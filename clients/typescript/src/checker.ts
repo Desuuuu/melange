@@ -18,6 +18,7 @@ import type { Queryable } from './database.js';
 import { Cache, NoopCache } from './cache.js';
 import { validateObject, validateRelation } from './validator.js';
 import { MelangeError } from './errors.js';
+import { BulkCheckBuilder } from './bulk-check.js';
 
 /**
  * CheckerOptions configures a Checker instance.
@@ -335,6 +336,32 @@ export class Checker {
     contextualTuples: ContextualTuple[]
   ): Promise<Decision> {
     return this.check(subject, relation, object, contextualTuples);
+  }
+
+  /**
+   * Create a new BulkCheckBuilder for batching multiple permission checks
+   * into a single SQL call via check_permission_bulk.
+   *
+   * @example
+   * ```typescript
+   * const results = await checker.newBulkCheck()
+   *   .add(user, 'can_read', repo1)
+   *   .add(user, 'can_read', repo2)
+   *   .execute();
+   *
+   * if (results.all()) {
+   *   // All checks passed
+   * }
+   * ```
+   */
+  newBulkCheck(): BulkCheckBuilder {
+    return new BulkCheckBuilder({
+      db: this.db,
+      cache: this.cache,
+      decision: this.decision,
+      shouldValidate: this.validateRequest,
+      cacheKey: this.cacheKey.bind(this),
+    });
   }
 
   /**

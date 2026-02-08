@@ -5,6 +5,8 @@
  * making it easier to handle different failure modes.
  */
 
+import type { MelangeObject, Relation } from './types.js';
+
 /**
  * MelangeError is the base error class for all melange errors.
  *
@@ -57,4 +59,42 @@ export class ValidationError extends MelangeError {
     this.name = 'ValidationError';
     Object.setPrototypeOf(this, ValidationError.prototype);
   }
+}
+
+/**
+ * BulkCheckDeniedError is thrown by BulkCheckResults.allOrError() when at least
+ * one check in the batch was denied. It carries the details of the first denied check.
+ */
+export class BulkCheckDeniedError extends MelangeError {
+  readonly subject: MelangeObject;
+  readonly relation: Relation;
+  readonly object: MelangeObject;
+  readonly index: number;
+  readonly total: number;
+
+  constructor(
+    subject: MelangeObject,
+    relation: Relation,
+    object: MelangeObject,
+    index: number,
+    total: number,
+  ) {
+    super(
+      `permission denied: ${subject.type}:${subject.id} ${relation} ${object.type}:${object.id} (${total} checks denied, first at index ${index})`,
+    );
+    this.name = 'BulkCheckDeniedError';
+    this.subject = subject;
+    this.relation = relation;
+    this.object = object;
+    this.index = index;
+    this.total = total;
+    Object.setPrototypeOf(this, BulkCheckDeniedError.prototype);
+  }
+}
+
+/**
+ * Type guard for BulkCheckDeniedError.
+ */
+export function isBulkCheckDeniedError(err: unknown): err is BulkCheckDeniedError {
+  return err instanceof BulkCheckDeniedError;
 }
