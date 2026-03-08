@@ -5,6 +5,7 @@ package sqlgen
 // =============================================================================
 
 type ListObjectsDirectInput struct {
+	DatabaseSchema      string
 	ObjectType          string
 	Relations           []string
 	AllowedSubjectTypes []string
@@ -13,7 +14,7 @@ type ListObjectsDirectInput struct {
 }
 
 func ListObjectsDirectQuery(input ListObjectsDirectInput) (string, error) {
-	q := Tuples("t").
+	q := Tuples(input.DatabaseSchema, "t").
 		ObjectType(input.ObjectType).
 		Relations(input.Relations...).
 		Where(
@@ -30,11 +31,12 @@ func ListObjectsDirectQuery(input ListObjectsDirectInput) (string, error) {
 }
 
 type ListObjectsUsersetSubjectInput struct {
-	ObjectType    string
-	Relations     []string
-	ClosureValues string      // Deprecated: use ClosureRows
-	ClosureRows   []ValuesRow // Typed closure rows (preferred)
-	Exclusions    ExclusionConfig
+	DatabaseSchema string
+	ObjectType     string
+	Relations      []string
+	ClosureValues  string      // Deprecated: use ClosureRows
+	ClosureRows    []ValuesRow // Typed closure rows (preferred)
+	Exclusions     ExclusionConfig
 }
 
 func ListObjectsUsersetSubjectQuery(input ListObjectsUsersetSubjectInput) (string, error) {
@@ -61,7 +63,7 @@ func ListObjectsUsersetSubjectQuery(input ListObjectsUsersetSubjectInput) (strin
 		),
 	)
 
-	q := Tuples("t").
+	q := Tuples(input.DatabaseSchema, "t").
 		ObjectType(input.ObjectType).
 		Relations(input.Relations...).
 		Where(
@@ -79,6 +81,7 @@ func ListObjectsUsersetSubjectQuery(input ListObjectsUsersetSubjectInput) (strin
 }
 
 type ListObjectsComplexClosureInput struct {
+	DatabaseSchema      string
 	ObjectType          string
 	Relation            string
 	AllowedSubjectTypes []string
@@ -87,7 +90,7 @@ type ListObjectsComplexClosureInput struct {
 }
 
 func ListObjectsComplexClosureQuery(input ListObjectsComplexClosureInput) (string, error) {
-	q := Tuples("t").
+	q := Tuples(input.DatabaseSchema, "t").
 		ObjectType(input.ObjectType).
 		Relations(input.Relation).
 		Where(
@@ -95,6 +98,7 @@ func ListObjectsComplexClosureQuery(input ListObjectsComplexClosureInput) (strin
 			In{Expr: SubjectType, Values: input.AllowedSubjectTypes},
 			SubjectIDMatch(Col{Table: "t", Column: "subject_id"}, SubjectID, input.AllowWildcard),
 			CheckPermission{
+				Schema:      input.DatabaseSchema,
 				Subject:     SubjectParams(),
 				Relation:    input.Relation,
 				Object:      LiteralObject(input.ObjectType, Col{Table: "t", Column: "object_id"}),
@@ -109,33 +113,36 @@ func ListObjectsComplexClosureQuery(input ListObjectsComplexClosureInput) (strin
 	return q.SQL(), nil
 }
 
-func ListObjectsIntersectionClosureQuery(functionName string) (string, error) {
+func ListObjectsIntersectionClosureQuery(databaseSchema, functionName string) (string, error) {
 	// Pass NULL for pagination params - inner function should return all results,
 	// outer pagination wrapper handles limiting
 	// Use alias to avoid column ambiguity with pagination-returning functions
 	stmt := SelectStmt{
 		ColumnExprs: []Expr{Col{Table: "icr", Column: "object_id"}},
 		FromExpr: FunctionCallExpr{
-			Name:  functionName,
-			Args:  []Expr{SubjectType, SubjectID, Null{}, Null{}},
-			Alias: "icr",
+			Schema: databaseSchema,
+			Name:   functionName,
+			Args:   []Expr{SubjectType, SubjectID, Null{}, Null{}},
+			Alias:  "icr",
 		},
 	}
 	return stmt.SQL(), nil
 }
 
-func ListObjectsIntersectionClosureValidatedQuery(objectType, relation, functionName string) (string, error) {
+func ListObjectsIntersectionClosureValidatedQuery(databaseSchema, objectType, relation, functionName string) (string, error) {
 	// Pass NULL for pagination params - inner function should return all results,
 	// outer pagination wrapper handles limiting
 	stmt := SelectStmt{
 		Distinct:    true,
 		ColumnExprs: []Expr{Col{Table: "icr", Column: "object_id"}},
 		FromExpr: FunctionCallExpr{
-			Name:  functionName,
-			Args:  []Expr{SubjectType, SubjectID, Null{}, Null{}},
-			Alias: "icr",
+			Schema: databaseSchema,
+			Name:   functionName,
+			Args:   []Expr{SubjectType, SubjectID, Null{}, Null{}},
+			Alias:  "icr",
 		},
 		Where: CheckPermission{
+			Schema:      databaseSchema,
 			Subject:     SubjectParams(),
 			Relation:    relation,
 			Object:      LiteralObject(objectType, Col{Table: "icr", Column: "object_id"}),
@@ -146,6 +153,7 @@ func ListObjectsIntersectionClosureValidatedQuery(objectType, relation, function
 }
 
 type ListObjectsUsersetPatternSimpleInput struct {
+	DatabaseSchema      string
 	ObjectType          string
 	SubjectType         string
 	SubjectRelation     string
@@ -170,6 +178,7 @@ func ListObjectsUsersetPatternSimpleQuery(input ListObjectsUsersetPatternSimpleI
 
 	if input.IsClosurePattern {
 		conditions = append(conditions, CheckPermission{
+			Schema:      input.DatabaseSchema,
 			Subject:     SubjectParams(),
 			Relation:    input.SourceRelation,
 			Object:      LiteralObject(input.ObjectType, Col{Table: "t", Column: "object_id"}),
@@ -177,7 +186,7 @@ func ListObjectsUsersetPatternSimpleQuery(input ListObjectsUsersetPatternSimpleI
 		})
 	}
 
-	q := Tuples("t").
+	q := Tuples(input.DatabaseSchema, "t").
 		ObjectType(input.ObjectType).
 		Relations(input.SourceRelations...).
 		Where(conditions...).
@@ -201,6 +210,7 @@ func ListObjectsUsersetPatternSimpleQuery(input ListObjectsUsersetPatternSimpleI
 }
 
 type ListObjectsUsersetPatternComplexInput struct {
+	DatabaseSchema   string
 	ObjectType       string
 	SubjectType      string
 	SubjectRelation  string
@@ -219,6 +229,7 @@ func ListObjectsUsersetPatternComplexQuery(input ListObjectsUsersetPatternComple
 			Right: Lit(input.SubjectRelation),
 		},
 		CheckPermission{
+			Schema:   input.DatabaseSchema,
 			Subject:  SubjectParams(),
 			Relation: input.SubjectRelation,
 			Object: ObjectRef{
@@ -231,6 +242,7 @@ func ListObjectsUsersetPatternComplexQuery(input ListObjectsUsersetPatternComple
 
 	if input.IsClosurePattern {
 		conditions = append(conditions, CheckPermission{
+			Schema:      input.DatabaseSchema,
 			Subject:     SubjectParams(),
 			Relation:    input.SourceRelation,
 			Object:      LiteralObject(input.ObjectType, Col{Table: "t", Column: "object_id"}),
@@ -238,7 +250,7 @@ func ListObjectsUsersetPatternComplexQuery(input ListObjectsUsersetPatternComple
 		})
 	}
 
-	q := Tuples("t").
+	q := Tuples(input.DatabaseSchema, "t").
 		ObjectType(input.ObjectType).
 		Relations(input.SourceRelations...).
 		Where(conditions...).
@@ -282,6 +294,7 @@ func ListObjectsSelfCandidateQuery(input ListObjectsSelfCandidateInput) (string,
 }
 
 type ListObjectsCrossTypeTTUInput struct {
+	DatabaseSchema  string
 	ObjectType      string
 	LinkingRelation string
 	Relation        string
@@ -290,12 +303,13 @@ type ListObjectsCrossTypeTTUInput struct {
 }
 
 func ListObjectsCrossTypeTTUQuery(input ListObjectsCrossTypeTTUInput) (string, error) {
-	q := Tuples("child").
+	q := Tuples(input.DatabaseSchema, "child").
 		ObjectType(input.ObjectType).
 		Relations(input.LinkingRelation).
 		Where(
 			In{Expr: Col{Table: "child", Column: "subject_type"}, Values: input.CrossTypes},
 			CheckPermission{
+				Schema:   input.DatabaseSchema,
 				Subject:  SubjectParams(),
 				Relation: input.Relation,
 				Object: ObjectRef{
@@ -314,6 +328,7 @@ func ListObjectsCrossTypeTTUQuery(input ListObjectsCrossTypeTTUInput) (string, e
 }
 
 type ListObjectsRecursiveTTUInput struct {
+	DatabaseSchema   string
 	ObjectType       string
 	LinkingRelations []string
 	Exclusions       ExclusionConfig
@@ -330,9 +345,10 @@ func ListObjectsRecursiveTTUQuery(input ListObjectsRecursiveTTUInput) (string, e
 		Alias:    "a",
 		Joins: []JoinClause{
 			{
-				Type:  "INNER",
-				Table: "melange_tuples",
-				Alias: "child",
+				Type:   "INNER",
+				Schema: input.DatabaseSchema,
+				Table:  "melange_tuples",
+				Alias:  "child",
 				On: And(
 					Eq{Left: Col{Table: "child", Column: "object_type"}, Right: Lit(input.ObjectType)},
 					In{Expr: Col{Table: "child", Column: "relation"}, Values: input.LinkingRelations},
@@ -352,6 +368,7 @@ func ListObjectsRecursiveTTUQuery(input ListObjectsRecursiveTTUInput) (string, e
 // =============================================================================
 
 type ListSubjectsUsersetFilterInput struct {
+	DatabaseSchema      string
 	ObjectType          string
 	RelationList        []string
 	AllowedSubjectTypes []string
@@ -397,7 +414,7 @@ func ListSubjectsUsersetFilterQuery(input ListSubjectsUsersetFilterInput) (strin
 		conditions = append(conditions, Raw(sql))
 	}
 
-	q := Tuples("t").
+	q := Tuples(input.DatabaseSchema, "t").
 		ObjectType(input.ObjectType).
 		Relations(input.RelationList...).
 		Where(conditions...).
@@ -452,6 +469,7 @@ func ListSubjectsSelfCandidateQuery(input ListSubjectsSelfCandidateInput) (strin
 }
 
 type ListSubjectsDirectInput struct {
+	DatabaseSchema  string
 	ObjectType      string
 	RelationList    []string
 	ObjectIDExpr    Expr
@@ -470,7 +488,7 @@ func ListSubjectsDirectQuery(input ListSubjectsDirectInput) (string, error) {
 		conditions = append(conditions, Ne{Left: Col{Table: "t", Column: "subject_id"}, Right: Lit("*")})
 	}
 
-	q := Tuples("t").
+	q := Tuples(input.DatabaseSchema, "t").
 		ObjectType(input.ObjectType).
 		Relations(input.RelationList...).
 		Where(conditions...).
@@ -483,6 +501,7 @@ func ListSubjectsDirectQuery(input ListSubjectsDirectInput) (string, error) {
 }
 
 type ListSubjectsComplexClosureInput struct {
+	DatabaseSchema  string
 	ObjectType      string
 	Relation        string
 	ObjectIDExpr    Expr
@@ -496,6 +515,7 @@ func ListSubjectsComplexClosureQuery(input ListSubjectsComplexClosureInput) (str
 		Eq{Left: Col{Table: "t", Column: "object_id"}, Right: input.ObjectIDExpr},
 		Eq{Left: Col{Table: "t", Column: "subject_type"}, Right: input.SubjectTypeExpr},
 		CheckPermission{
+			Schema: input.DatabaseSchema,
 			Subject: SubjectRef{
 				Type: input.SubjectTypeExpr,
 				ID:   Col{Table: "t", Column: "subject_id"},
@@ -510,7 +530,7 @@ func ListSubjectsComplexClosureQuery(input ListSubjectsComplexClosureInput) (str
 		conditions = append(conditions, Ne{Left: Col{Table: "t", Column: "subject_id"}, Right: Lit("*")})
 	}
 
-	q := Tuples("t").
+	q := Tuples(input.DatabaseSchema, "t").
 		ObjectType(input.ObjectType).
 		Relations(input.Relation).
 		Where(conditions...).
@@ -522,32 +542,35 @@ func ListSubjectsComplexClosureQuery(input ListSubjectsComplexClosureInput) (str
 	return q.SQL(), nil
 }
 
-func ListSubjectsIntersectionClosureQuery(functionName string, subjectTypeExpr Expr) (string, error) {
+func ListSubjectsIntersectionClosureQuery(databaseSchema, functionName string, subjectTypeExpr Expr) (string, error) {
 	// Inner list functions don't have pagination params - they return all results.
 	// Outer pagination wrapper handles limiting.
 	stmt := SelectStmt{
 		ColumnExprs: []Expr{Col{Table: "ics", Column: "subject_id"}},
 		FromExpr: FunctionCallExpr{
-			Name:  functionName,
-			Args:  []Expr{ObjectID, subjectTypeExpr},
-			Alias: "ics",
+			Schema: databaseSchema,
+			Name:   functionName,
+			Args:   []Expr{ObjectID, subjectTypeExpr},
+			Alias:  "ics",
 		},
 	}
 	return stmt.SQL(), nil
 }
 
-func ListSubjectsIntersectionClosureValidatedQuery(objectType, relation, functionName string, functionSubjectTypeExpr, checkSubjectTypeExpr, objectIDExpr Expr) (string, error) {
+func ListSubjectsIntersectionClosureValidatedQuery(databaseSchema, objectType, relation, functionName string, functionSubjectTypeExpr, checkSubjectTypeExpr, objectIDExpr Expr) (string, error) {
 	// Inner list functions don't have pagination params - they return all results.
 	// Outer pagination wrapper handles limiting.
 	stmt := SelectStmt{
 		Distinct:    true,
 		ColumnExprs: []Expr{Col{Table: "ics", Column: "subject_id"}},
 		FromExpr: FunctionCallExpr{
-			Name:  functionName,
-			Args:  []Expr{objectIDExpr, functionSubjectTypeExpr},
-			Alias: "ics",
+			Schema: databaseSchema,
+			Name:   functionName,
+			Args:   []Expr{objectIDExpr, functionSubjectTypeExpr},
+			Alias:  "ics",
 		},
 		Where: CheckPermissionCall{
+			Schema:       databaseSchema,
 			FunctionName: "check_permission",
 			Subject: SubjectRef{
 				Type: checkSubjectTypeExpr,
@@ -562,6 +585,7 @@ func ListSubjectsIntersectionClosureValidatedQuery(objectType, relation, functio
 }
 
 type ListSubjectsUsersetPatternSimpleInput struct {
+	DatabaseSchema      string
 	ObjectType          string
 	SubjectType         string
 	SubjectRelation     string
@@ -599,6 +623,7 @@ func ListSubjectsUsersetPatternSimpleQuery(input ListSubjectsUsersetPatternSimpl
 
 	if input.IsClosurePattern {
 		conditions = append(conditions, CheckPermission{
+			Schema: input.DatabaseSchema,
 			Subject: SubjectRef{
 				Type: input.SubjectTypeExpr,
 				ID:   Col{Table: "s", Column: "subject_id"},
@@ -609,7 +634,7 @@ func ListSubjectsUsersetPatternSimpleQuery(input ListSubjectsUsersetPatternSimpl
 		})
 	}
 
-	q := Tuples("t").
+	q := Tuples(input.DatabaseSchema, "t").
 		ObjectType(input.ObjectType).
 		Relations(input.SourceRelations...).
 		Where(conditions...).
@@ -623,6 +648,7 @@ func ListSubjectsUsersetPatternSimpleQuery(input ListSubjectsUsersetPatternSimpl
 }
 
 type ListSubjectsUsersetPatternComplexInput struct {
+	DatabaseSchema   string
 	ObjectType       string
 	SubjectType      string
 	SubjectRelation  string
@@ -646,6 +672,7 @@ func ListSubjectsUsersetPatternComplexQuery(input ListSubjectsUsersetPatternComp
 
 	if input.IsClosurePattern {
 		whereExprs = append(whereExprs, CheckPermission{
+			Schema: input.DatabaseSchema,
 			Subject: SubjectRef{
 				Type: input.SubjectTypeExpr,
 				ID:   Col{Table: "s", Column: "subject_id"},
@@ -660,15 +687,16 @@ func ListSubjectsUsersetPatternComplexQuery(input ListSubjectsUsersetPatternComp
 
 	listFuncName := "list_" + Ident(input.SubjectType) + "_" + Ident(input.SubjectRelation) + "_subjects"
 	listFunc := LateralFunction{
-		Name:  listFuncName,
-		Args:  []Expr{UsersetObjectID{Source: Col{Table: "t", Column: "subject_id"}}, input.SubjectTypeExpr},
-		Alias: "s",
+		Schema: input.DatabaseSchema,
+		Name:   listFuncName,
+		Args:   []Expr{UsersetObjectID{Source: Col{Table: "t", Column: "subject_id"}}, input.SubjectTypeExpr},
+		Alias:  "s",
 	}
 
 	stmt := SelectStmt{
 		Distinct:    true,
 		ColumnExprs: []Expr{Col{Table: "s", Column: "subject_id"}},
-		FromExpr:    TableAs("melange_tuples", "t"),
+		FromExpr:    TableAs(input.DatabaseSchema, "melange_tuples", "t"),
 		Joins: []JoinClause{
 			{
 				Type:      "CROSS",
@@ -682,6 +710,7 @@ func ListSubjectsUsersetPatternComplexQuery(input ListSubjectsUsersetPatternComp
 }
 
 type ListSubjectsUsersetPatternRecursiveComplexInput struct {
+	DatabaseSchema      string
 	ObjectType          string
 	SubjectType         string
 	SubjectRelation     string
@@ -714,6 +743,7 @@ func ListSubjectsUsersetPatternRecursiveComplexQuery(input ListSubjectsUsersetPa
 		HasUserset{Source: Col{Table: "t", Column: "subject_id"}},
 		Eq{Left: UsersetRelation{Source: Col{Table: "t", Column: "subject_id"}}, Right: Lit(input.SubjectRelation)},
 		CheckPermission{
+			Schema: input.DatabaseSchema,
 			Subject: SubjectRef{
 				Type: input.SubjectTypeExpr,
 				ID:   Col{Table: "m", Column: "subject_id"},
@@ -729,6 +759,7 @@ func ListSubjectsUsersetPatternRecursiveComplexQuery(input ListSubjectsUsersetPa
 
 	if input.IsClosurePattern {
 		conditions = append(conditions, CheckPermission{
+			Schema: input.DatabaseSchema,
 			Subject: SubjectRef{
 				Type: input.SubjectTypeExpr,
 				ID:   Col{Table: "m", Column: "subject_id"},
@@ -739,7 +770,7 @@ func ListSubjectsUsersetPatternRecursiveComplexQuery(input ListSubjectsUsersetPa
 		})
 	}
 
-	q := Tuples("t").
+	q := Tuples(input.DatabaseSchema, "t").
 		ObjectType(input.ObjectType).
 		Relations(input.SourceRelations...).
 		Where(conditions...).

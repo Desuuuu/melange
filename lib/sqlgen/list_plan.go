@@ -3,8 +3,9 @@ package sqlgen
 // ListPlan contains all computed data needed to generate a list function.
 type ListPlan struct {
 	// Input data
-	Analysis RelationAnalysis
-	Inline   InlineSQLData
+	Analysis       RelationAnalysis
+	Inline         InlineSQLData
+	DatabaseSchema string
 
 	// Function identity
 	FunctionName string
@@ -47,11 +48,12 @@ type ListPlan struct {
 }
 
 // BuildListObjectsPlan creates a plan for generating a list_objects function.
-func BuildListObjectsPlan(a RelationAnalysis, inline InlineSQLData) ListPlan {
-	plan := buildBasePlan(a, inline, listObjectsFunctionName(a.ObjectType, a.Relation), nil)
+func BuildListObjectsPlan(a RelationAnalysis, inline InlineSQLData, databaseSchema string) ListPlan {
+	plan := buildBasePlan(a, inline, databaseSchema, listObjectsFunctionName(a.ObjectType, a.Relation), nil)
 	if a.Features.HasExclusion {
 		plan.Exclusions = buildExclusionInput(
 			a,
+			databaseSchema,
 			Col{Table: "t", Column: "object_id"},
 			SubjectType,
 			SubjectID,
@@ -61,11 +63,12 @@ func BuildListObjectsPlan(a RelationAnalysis, inline InlineSQLData) ListPlan {
 }
 
 // BuildListObjectsPlanWithLookup creates a plan with analysis lookup for TTU optimization.
-func BuildListObjectsPlanWithLookup(a RelationAnalysis, inline InlineSQLData, lookup map[string]*RelationAnalysis) ListPlan {
-	plan := buildBasePlan(a, inline, listObjectsFunctionName(a.ObjectType, a.Relation), lookup)
+func BuildListObjectsPlanWithLookup(a RelationAnalysis, inline InlineSQLData, databaseSchema string, lookup map[string]*RelationAnalysis) ListPlan {
+	plan := buildBasePlan(a, inline, databaseSchema, listObjectsFunctionName(a.ObjectType, a.Relation), lookup)
 	if a.Features.HasExclusion {
 		plan.Exclusions = buildExclusionInput(
 			a,
+			databaseSchema,
 			Col{Table: "t", Column: "object_id"},
 			SubjectType,
 			SubjectID,
@@ -75,11 +78,12 @@ func BuildListObjectsPlanWithLookup(a RelationAnalysis, inline InlineSQLData, lo
 }
 
 // BuildListSubjectsPlan creates a plan for generating a list_subjects function.
-func BuildListSubjectsPlan(a RelationAnalysis, inline InlineSQLData) ListPlan {
-	plan := buildBasePlan(a, inline, listSubjectsFunctionName(a.ObjectType, a.Relation), nil)
+func BuildListSubjectsPlan(a RelationAnalysis, inline InlineSQLData, databaseSchema string) ListPlan {
+	plan := buildBasePlan(a, inline, databaseSchema, listSubjectsFunctionName(a.ObjectType, a.Relation), nil)
 	if a.Features.HasExclusion {
 		plan.Exclusions = buildExclusionInput(
 			a,
+			databaseSchema,
 			ObjectID,
 			Col{Table: "t", Column: "subject_type"},
 			Col{Table: "t", Column: "subject_id"},
@@ -92,11 +96,12 @@ func BuildListSubjectsPlan(a RelationAnalysis, inline InlineSQLData) ListPlan {
 }
 
 // BuildListSubjectsPlanWithLookup creates a plan with analysis lookup for TTU optimization.
-func BuildListSubjectsPlanWithLookup(a RelationAnalysis, inline InlineSQLData, lookup map[string]*RelationAnalysis) ListPlan {
-	plan := buildBasePlan(a, inline, listSubjectsFunctionName(a.ObjectType, a.Relation), lookup)
+func BuildListSubjectsPlanWithLookup(a RelationAnalysis, inline InlineSQLData, databaseSchema string, lookup map[string]*RelationAnalysis) ListPlan {
+	plan := buildBasePlan(a, inline, databaseSchema, listSubjectsFunctionName(a.ObjectType, a.Relation), lookup)
 	if a.Features.HasExclusion {
 		plan.Exclusions = buildExclusionInput(
 			a,
+			databaseSchema,
 			ObjectID,
 			Col{Table: "t", Column: "subject_type"},
 			Col{Table: "t", Column: "subject_id"},
@@ -108,13 +113,14 @@ func BuildListSubjectsPlanWithLookup(a RelationAnalysis, inline InlineSQLData, l
 	return plan
 }
 
-func buildBasePlan(a RelationAnalysis, inline InlineSQLData, functionName string, lookup map[string]*RelationAnalysis) ListPlan {
+func buildBasePlan(a RelationAnalysis, inline InlineSQLData, databaseSchema, functionName string, lookup map[string]*RelationAnalysis) ListPlan {
 	return ListPlan{
-		Analysis:     a,
-		Inline:       inline,
-		FunctionName: functionName,
-		ObjectType:   a.ObjectType,
-		Relation:     a.Relation,
+		Analysis:       a,
+		Inline:         inline,
+		DatabaseSchema: databaseSchema,
+		FunctionName:   functionName,
+		ObjectType:     a.ObjectType,
+		Relation:       a.Relation,
 
 		RelationList:           buildTupleLookupRelations(a),
 		AllSatisfyingRelations: buildAllSatisfyingRelationsList(a),

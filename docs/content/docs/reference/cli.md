@@ -106,12 +106,13 @@ melange migrate \
 
 **Flags:**
 
-| Flag        | Default              | Description                                   |
-| ----------- | -------------------- | --------------------------------------------- |
-| `--db`      | (from config)        | PostgreSQL connection string                  |
-| `--schema`  | `schemas/schema.fga` | Path to schema.fga file                       |
-| `--dry-run` | `false`              | Output SQL to stdout without applying changes |
-| `--force`   | `false`              | Force migration even if schema is unchanged   |
+| Flag          | Default              | Description                                   |
+| ------------- | -------------------- | --------------------------------------------- |
+| `--db`        | (from config)        | PostgreSQL connection string                  |
+| `--db-schema` | `""`                 | Database schema                               |
+| `--schema`    | `schemas/schema.fga` | Path to schema.fga file                       |
+| `--dry-run`   | `false`              | Output SQL to stdout without applying changes |
+| `--force`     | `false`              | Force migration even if schema is unchanged   |
 
 This command:
 
@@ -180,10 +181,11 @@ melange status \
 
 **Flags:**
 
-| Flag       | Default              | Description                  |
-| ---------- | -------------------- | ---------------------------- |
-| `--db`     | (from config)        | PostgreSQL connection string |
-| `--schema` | `schemas/schema.fga` | Path to schema.fga file      |
+| Flag          | Default              | Description                  |
+| ------------- | -------------------- | ---------------------------- |
+| `--db`        | (from config)        | PostgreSQL connection string |
+| `--db-schema` | `""`                 | Database schema              |
+| `--schema`    | `schemas/schema.fga` | Path to schema.fga file      |
 
 **Output:**
 
@@ -209,11 +211,12 @@ melange doctor \
 
 **Flags:**
 
-| Flag        | Default              | Description                                  |
-| ----------- | -------------------- | -------------------------------------------- |
-| `--db`      | (from config)        | PostgreSQL connection string                 |
-| `--schema`  | `schemas/schema.fga` | Path to schema.fga file                      |
-| `--verbose` | `false`              | Show detailed output with additional context |
+| Flag          | Default              | Description                                  |
+| ------------- | -------------------- | -------------------------------------------- |
+| `--db`        | (from config)        | PostgreSQL connection string                 |
+| `--db-schema` | `""`                 | Database schema                              |
+| `--schema`    | `schemas/schema.fga` | Path to schema.fga file                      |
+| `--verbose`   | `false`              | Show detailed output with additional context |
 
 **Output:**
 

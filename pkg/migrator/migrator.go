@@ -14,6 +14,7 @@ import (
 	"github.com/lib/pq"
 
 	"github.com/pthm/melange/lib/sqlgen"
+	"github.com/pthm/melange/lib/sqlgen/sqldsl"
 	"github.com/pthm/melange/pkg/schema"
 )
 
@@ -56,6 +57,9 @@ type MigrateOptions struct {
 	// Version is the melange CLI/library version (e.g., "v0.4.3").
 	// Recorded in melange_migrations for traceability.
 	Version string
+
+	// DatabaseSchema is the Postgres schema where the objects will be created.
+	DatabaseSchema string
 }
 
 // InternalMigrateOptions extends MigrateOptions with internal fields.
@@ -105,8 +109,9 @@ type MigrationRecord struct {
 //	m := migrator.NewMigrator(db, "schemas/schema.fga")
 //	err := m.MigrateWithTypes(ctx, types)
 type Migrator struct {
-	db         Execer
-	schemaPath string
+	db             Execer
+	schemaPath     string
+	databaseSchema string
 }
 
 // NewMigrator creates a new schema migrator.
@@ -121,6 +126,16 @@ func (m *Migrator) SchemaPath() string {
 	return m.schemaPath
 }
 
+// SetDatabaseSchema returns the path to the schema file.
+func (m *Migrator) SetDatabaseSchema(databaseSchema string) {
+	m.databaseSchema = databaseSchema
+}
+
+// DatabaseSchema returns the database schema.
+func (m *Migrator) DatabaseSchema() string {
+	return m.databaseSchema
+}
+
 // HasSchema returns true if the schema file exists.
 // Use this to conditionally run migration or skip if not configured.
 func (m *Migrator) HasSchema() bool {
@@ -131,6 +146,19 @@ func (m *Migrator) HasSchema() bool {
 // ApplyDDL applies any base schema required by Melange.
 // With fully generated SQL entrypoints, no base DDL is required.
 func (m *Migrator) ApplyDDL(ctx context.Context) error {
+	return nil
+}
+
+// createSchema creates the database schema if necessary.
+func (m *Migrator) createSchema(ctx context.Context, db Execer) error {
+	if m.databaseSchema == "" {
+		return nil
+	}
+
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("CREATE SCHEMA IF NOT EXISTS %s;", sqldsl.QuoteIdent(m.databaseSchema))); err != nil {
+		return fmt.Errorf("creating schema: %w", err)
+	}
+
 	return nil
 }
 
@@ -232,13 +260,13 @@ func (m *Migrator) MigrateWithTypes(ctx context.Context, types []TypeDefinition)
 	analyses := AnalyzeRelations(types, closureRows)
 	analyses = ComputeCanGenerate(analyses) // Walk dependency graph to set CanGenerate
 	inline := buildInlineSQLData(closureRows, analyses)
-	generatedSQL, err := GenerateSQL(analyses, inline)
+	generatedSQL, err := GenerateSQL(analyses, inline, m.databaseSchema)
 	if err != nil {
 		return fmt.Errorf("generating check SQL: %w", err)
 	}
 
 	// 4. Generate list functions
-	listSQL, err := GenerateListSQL(analyses, inline)
+	listSQL, err := GenerateListSQL(analyses, inline, m.databaseSchema)
 	if err != nil {
 		return fmt.Errorf("generating list SQL: %w", err)
 	}
@@ -252,6 +280,11 @@ func (m *Migrator) MigrateWithTypes(ctx context.Context, types []TypeDefinition)
 			return fmt.Errorf("starting transaction: %w", err)
 		}
 		defer func() { _ = tx.Rollback() }()
+
+		// Create database schema if necessary
+		if err := m.createSchema(ctx, tx); err != nil {
+			return err
+		}
 
 		// Apply generated specialized check functions
 		if err := m.applyGeneratedSQL(ctx, tx, generatedSQL); err != nil {
@@ -267,6 +300,9 @@ func (m *Migrator) MigrateWithTypes(ctx context.Context, types []TypeDefinition)
 	}
 
 	// Fall back to non-transactional (for *sql.Conn)
+	if err := m.createSchema(ctx, m.db); err != nil {
+		return err
+	}
 	if err := m.applyGeneratedSQL(ctx, m.db, generatedSQL); err != nil {
 		return err
 	}
@@ -296,15 +332,18 @@ func (m *Migrator) GetStatus(ctx context.Context) (*Status, error) {
 
 	// Check if melange_tuples relation exists (view, table, or materialized view)
 	var tuplesExists bool
-	err := m.db.QueryRowContext(ctx, `
-		SELECT EXISTS (
-			SELECT 1 FROM pg_class c
-			JOIN pg_namespace n ON n.oid = c.relnamespace
-			WHERE c.relname = 'melange_tuples'
-			AND n.nspname = current_schema()
-			AND c.relkind IN ('r', 'v', 'm')
-		)
-	`).Scan(&tuplesExists)
+	err := m.db.QueryRowContext(ctx, fmt.Sprintf(
+		`
+			SELECT EXISTS (
+				SELECT 1 FROM pg_class c
+				JOIN pg_namespace n ON n.oid = c.relnamespace
+				WHERE c.relname = 'melange_tuples'
+				AND n.nspname = %s
+				AND c.relkind IN ('r', 'v', 'm')
+			)
+		`,
+		m.postgresSchema(),
+	)).Scan(&tuplesExists)
 	if err != nil {
 		return nil, fmt.Errorf("checking melange_tuples: %w", err)
 	}
@@ -330,14 +369,17 @@ func (m *Migrator) GetLastMigration(ctx context.Context) (*MigrationRecord, erro
 func (m *Migrator) getLastMigration(ctx context.Context, db Execer) (*MigrationRecord, error) {
 	// First check if the migrations table exists
 	var tableExists bool
-	err := db.QueryRowContext(ctx, `
-		SELECT EXISTS (
-			SELECT 1 FROM pg_class c
-			JOIN pg_namespace n ON n.oid = c.relnamespace
-			WHERE c.relname = 'melange_migrations'
-			AND n.nspname = current_schema()
-		)
-	`).Scan(&tableExists)
+	err := db.QueryRowContext(ctx, fmt.Sprintf(
+		`
+			SELECT EXISTS (
+				SELECT 1 FROM pg_class c
+				JOIN pg_namespace n ON n.oid = c.relnamespace
+				WHERE c.relname = 'melange_migrations'
+				AND n.nspname = %s
+			)
+		`,
+		m.postgresSchema(),
+	)).Scan(&tableExists)
 	if err != nil {
 		return nil, fmt.Errorf("checking melange_migrations table: %w", err)
 	}
@@ -346,12 +388,15 @@ func (m *Migrator) getLastMigration(ctx context.Context, db Execer) (*MigrationR
 	}
 
 	var rec MigrationRecord
-	err = db.QueryRowContext(ctx, `
-		SELECT melange_version, schema_checksum, codegen_version, function_names
-		FROM melange_migrations
-		ORDER BY id DESC
-		LIMIT 1
-	`).Scan(&rec.MelangeVersion, &rec.SchemaChecksum, &rec.CodegenVersion, pq.Array(&rec.FunctionNames))
+	err = db.QueryRowContext(ctx, fmt.Sprintf(
+		`
+			SELECT melange_version, schema_checksum, codegen_version, function_names
+			FROM %s
+			ORDER BY id DESC
+			LIMIT 1
+		`,
+		m.prefixIdent("melange_migrations"),
+	)).Scan(&rec.MelangeVersion, &rec.SchemaChecksum, &rec.CodegenVersion, pq.Array(&rec.FunctionNames))
 	if err == sql.ErrNoRows {
 		return nil, nil // No previous migration
 	}
@@ -372,16 +417,16 @@ func shouldSkipMigration(lastMigration *MigrationRecord, schemaChecksum string) 
 
 // getCurrentFunctions returns all melange-generated function names from pg_proc.
 func (m *Migrator) getCurrentFunctions(ctx context.Context, db Execer) ([]string, error) {
-	rows, err := db.QueryContext(ctx, `
+	rows, err := db.QueryContext(ctx, fmt.Sprintf(`
 		SELECT p.proname
 		FROM pg_proc p
 		JOIN pg_namespace n ON p.pronamespace = n.oid
-		WHERE n.nspname = current_schema()
+		WHERE n.nspname = %s
 		AND (
-			p.proname LIKE 'check_%'
-			OR p.proname LIKE 'list_%'
+			p.proname LIKE 'check_%%'
+			OR p.proname LIKE 'list_%%'
 		)
-	`)
+	`, m.postgresSchema()))
 	if err != nil {
 		return nil, fmt.Errorf("querying pg_proc: %w", err)
 	}
@@ -408,7 +453,9 @@ func (m *Migrator) dropOrphanedFunctions(ctx context.Context, db Execer, current
 	for _, fn := range currentFunctions {
 		if !expected[fn] {
 			// Use CASCADE to handle any edge case dependencies
-			_, err := db.ExecContext(ctx, fmt.Sprintf("DROP FUNCTION IF EXISTS %s CASCADE", fn))
+			query := fmt.Sprintf("DROP FUNCTION IF EXISTS %s CASCADE", m.prefixIdent(fn))
+
+			_, err := db.ExecContext(ctx, query)
 			if err != nil {
 				return fmt.Errorf("dropping orphaned function %s: %w", fn, err)
 			}
@@ -420,11 +467,11 @@ func (m *Migrator) dropOrphanedFunctions(ctx context.Context, db Execer, current
 // applyMigrationsDDL creates the melange_migrations table if it doesn't exist.
 // Also applies any necessary column migrations for existing tables.
 func (m *Migrator) applyMigrationsDDL(ctx context.Context, db Execer) error {
-	if _, err := db.ExecContext(ctx, migrationsDDL); err != nil {
+	if _, err := db.ExecContext(ctx, migrationsDDL(m.databaseSchema)); err != nil {
 		return fmt.Errorf("applying migrations DDL: %w", err)
 	}
 	// Add melange_version column if it doesn't exist (for existing tables)
-	if _, err := db.ExecContext(ctx, addMelangeVersionColumn); err != nil {
+	if _, err := db.ExecContext(ctx, addMelangeVersionColumn(m.databaseSchema)); err != nil {
 		return fmt.Errorf("adding melange_version column: %w", err)
 	}
 	return nil
@@ -432,10 +479,13 @@ func (m *Migrator) applyMigrationsDDL(ctx context.Context, db Execer) error {
 
 // insertMigrationRecord records the migration in melange_migrations.
 func (m *Migrator) insertMigrationRecord(ctx context.Context, db Execer, melangeVersion, schemaChecksum string, functionNames []string) error {
-	_, err := db.ExecContext(ctx, `
-		INSERT INTO melange_migrations (melange_version, schema_checksum, codegen_version, function_names)
-		VALUES ($1, $2, $3, $4)
-	`, melangeVersion, schemaChecksum, CodegenVersion, pq.Array(functionNames))
+	_, err := db.ExecContext(ctx, fmt.Sprintf(
+		`
+			INSERT INTO %s (melange_version, schema_checksum, codegen_version, function_names)
+			VALUES ($1, $2, $3, $4)
+		`,
+		m.prefixIdent("melange_migrations"),
+	), melangeVersion, schemaChecksum, CodegenVersion, pq.Array(functionNames))
 	if err != nil {
 		return fmt.Errorf("inserting migration record: %w", err)
 	}
@@ -477,13 +527,13 @@ func (m *Migrator) MigrateWithTypesAndOptions(ctx context.Context, types []TypeD
 	analyses := AnalyzeRelations(types, closureRows)
 	analyses = ComputeCanGenerate(analyses)
 	inline := buildInlineSQLData(closureRows, analyses)
-	generatedSQL, err := GenerateSQL(analyses, inline)
+	generatedSQL, err := GenerateSQL(analyses, inline, m.databaseSchema)
 	if err != nil {
 		return fmt.Errorf("generating check SQL: %w", err)
 	}
 
 	// 6. Generate list functions
-	listSQL, err := GenerateListSQL(analyses, inline)
+	listSQL, err := GenerateListSQL(analyses, inline, m.databaseSchema)
 	if err != nil {
 		return fmt.Errorf("generating list SQL: %w", err)
 	}
@@ -506,6 +556,11 @@ func (m *Migrator) MigrateWithTypesAndOptions(ctx context.Context, types []TypeD
 			return fmt.Errorf("starting transaction: %w", err)
 		}
 		defer func() { _ = tx.Rollback() }()
+
+		// Create database schema if necessary
+		if err := m.createSchema(ctx, tx); err != nil {
+			return err
+		}
 
 		// Apply migrations DDL (creates tracking table)
 		if err := m.applyMigrationsDDL(ctx, tx); err != nil {
@@ -544,6 +599,9 @@ func (m *Migrator) MigrateWithTypesAndOptions(ctx context.Context, types []TypeD
 	}
 
 	// Fall back to non-transactional (for *sql.Conn)
+	if err := m.createSchema(ctx, m.db); err != nil {
+		return err
+	}
 	if err := m.applyMigrationsDDL(ctx, m.db); err != nil {
 		return err
 	}
@@ -579,11 +637,19 @@ func (m *Migrator) outputDryRun(w io.Writer, melangeVersion, schemaChecksum stri
 	_, _ = fmt.Fprintf(w, "-- Codegen version: %s\n", CodegenVersion)
 	_, _ = fmt.Fprintf(w, "\n")
 
+	// Database schema
+	if m.databaseSchema != "" {
+		_, _ = fmt.Fprintf(w, "-- ============================================================\n")
+		_, _ = fmt.Fprintf(w, "-- Database schema\n")
+		_, _ = fmt.Fprintf(w, "-- ============================================================\n\n")
+		_, _ = fmt.Fprintf(w, "CREATE SCHEMA IF NOT EXISTS %s;\n\n", sqldsl.QuoteIdent(m.databaseSchema))
+	}
+
 	// Migrations DDL
 	_, _ = fmt.Fprintf(w, "-- ============================================================\n")
 	_, _ = fmt.Fprintf(w, "-- DDL: Migration Tracking Table\n")
 	_, _ = fmt.Fprintf(w, "-- ============================================================\n\n")
-	_, _ = fmt.Fprintf(w, "%s\n\n", migrationsDDL)
+	_, _ = fmt.Fprintf(w, "%s\n\n", migrationsDDL(m.databaseSchema))
 
 	// Check functions
 	_, _ = fmt.Fprintf(w, "-- ============================================================\n")
@@ -657,6 +723,19 @@ func (m *Migrator) outputDryRun(w io.Writer, melangeVersion, schemaChecksum stri
 	for i, fn := range sortedFunctions {
 		quotedFunctions[i] = fmt.Sprintf("'%s'", fn)
 	}
-	_, _ = fmt.Fprintf(w, "INSERT INTO melange_migrations (melange_version, schema_checksum, codegen_version, function_names)\n")
+
+	_, _ = fmt.Fprintf(w, "INSERT INTO %s (melange_version, schema_checksum, codegen_version, function_names)\n", m.prefixIdent("melange_migrations"))
 	_, _ = fmt.Fprintf(w, "VALUES ('%s', '%s', '%s', ARRAY[%s]);\n", melangeVersion, schemaChecksum, CodegenVersion, strings.Join(quotedFunctions, ", "))
+}
+
+func (m *Migrator) prefixIdent(identifier string) string {
+	return sqldsl.PrefixIdent(identifier, m.databaseSchema)
+}
+
+func (m *Migrator) postgresSchema() string {
+	if m.databaseSchema == "" {
+		return "current_schema()"
+	}
+
+	return pq.QuoteLiteral(m.databaseSchema)
 }

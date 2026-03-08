@@ -52,6 +52,7 @@ func Optf(cond bool, format string, args ...any) string {
 // JoinClause represents a SQL JOIN clause.
 type JoinClause struct {
 	Type      string    // "INNER", "LEFT", etc.
+	Schema    string    // Deprecated: use TableExpr instead
 	Table     string    // Deprecated: use TableExpr instead
 	TableExpr TableExpr // Preferred: typed table expression
 	Alias     string    // Deprecated: use TableExpr's alias instead
@@ -74,9 +75,9 @@ func (j JoinClause) tableSQL() string {
 		return j.TableExpr.TableSQL()
 	}
 	if j.Alias != "" {
-		return j.Table + " AS " + j.Alias
+		return PrefixIdent(j.Table, j.Schema) + " AS " + j.Alias
 	}
-	return j.Table
+	return PrefixIdent(j.Table, j.Schema)
 }
 
 func (j JoinClause) joinKeyword() string {
@@ -392,9 +393,10 @@ func Ident(name string) string {
 // Example: LateralFunction{Name: "list_doc_viewer_subjects", Args: []Expr{...}, Alias: "s"}
 // Renders: LATERAL list_doc_viewer_subjects(...) AS s
 type LateralFunction struct {
-	Name  string
-	Args  []Expr
-	Alias string
+	Schema string
+	Name   string
+	Args   []Expr
+	Alias  string
 }
 
 // SQL renders the LATERAL function expression.
@@ -403,7 +405,7 @@ func (l LateralFunction) SQL() string {
 	for i, arg := range l.Args {
 		args[i] = arg.SQL()
 	}
-	call := "LATERAL " + l.Name + "(" + strings.Join(args, ", ") + ")"
+	call := "LATERAL " + PrefixIdent(l.Name, l.Schema) + "(" + strings.Join(args, ", ") + ")"
 	if l.Alias != "" {
 		return call + " AS " + l.Alias
 	}
