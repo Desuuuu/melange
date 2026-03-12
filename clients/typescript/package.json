@@ -40,13 +40,13 @@
     "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {
-    "@types/node": "^18.0.0",
+    "@types/node": "^22.0.0",
     "@types/pg": "^8.11.0",
-    "@vitest/coverage-v8": "^2.1.8",
+    "@vitest/coverage-v8": "^4.0.18",
     "pg": "^8.13.1",
     "postgres": "^3.4.8",
     "typescript": "^5.0.0",
-    "vitest": "^2.1.8"
+    "vitest": "^4.0.18"
   },
   "peerDependencies": {
     "pg": "^8.0.0"
@@ -58,5 +58,10 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "pnpm": {
+    "overrides": {
+      "rollup": ">=4.59.0"
+    }
   }
 }
