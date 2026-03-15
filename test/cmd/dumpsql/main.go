@@ -23,6 +23,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -121,6 +123,48 @@ func loadTests() ([]TestCase, error) {
 			return nil, fmt.Errorf("parsing %s: %w", file, err)
 		}
 
+		allTests = append(allTests, tf.Tests...)
+	}
+
+	// Load local melange-specific tests (prefixed with "melange/")
+	localTests, err := loadLocalTests()
+	if err != nil {
+		return nil, err
+	}
+	allTests = append(allTests, localTests...)
+
+	return allTests, nil
+}
+
+// loadLocalTests reads YAML test files from the openfgatests/testdata directory.
+func loadLocalTests() ([]TestCase, error) {
+	_, thisFile, _, _ := runtime.Caller(0)
+	testdataDir := filepath.Join(filepath.Dir(thisFile), "..", "..", "openfgatests", "testdata")
+
+	entries, err := os.ReadDir(testdataDir)
+	if err != nil {
+		return nil, nil
+	}
+
+	var allTests []TestCase
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yaml") {
+			continue
+		}
+
+		b, err := os.ReadFile(filepath.Join(testdataDir, entry.Name()))
+		if err != nil {
+			return nil, fmt.Errorf("reading local test %s: %w", entry.Name(), err)
+		}
+
+		var tf TestFile
+		if err := yaml.Unmarshal(b, &tf); err != nil {
+			return nil, fmt.Errorf("parsing local test %s: %w", entry.Name(), err)
+		}
+
+		for i := range tf.Tests {
+			tf.Tests[i].Name = "melange/" + tf.Tests[i].Name
+		}
 		allTests = append(allTests, tf.Tests...)
 	}
 

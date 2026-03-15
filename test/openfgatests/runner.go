@@ -204,7 +204,6 @@ func RunTestsByPattern(t *testing.T, client *Client, pattern string) {
 	}
 }
 
-
 // RunTestByName runs a specific test by exact name.
 func RunTestByName(t *testing.T, client *Client, name string) {
 	tests, err := LoadTests()

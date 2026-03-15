@@ -415,6 +415,10 @@ func buildListObjectsComplexUsersetBlock(plan ListPlan, pattern listUsersetPatte
 		SelectCol("object_id").
 		Distinct()
 
+	for _, pred := range plan.Exclusions.BuildPredicates() {
+		q.Where(pred)
+	}
+
 	return TypedQueryBlock{
 		Comments: []string{
 			"-- Via " + pattern.SubjectType + "#" + pattern.SubjectRelation + " (complex userset, validated by check_permission)",
@@ -448,6 +452,10 @@ func buildListObjectsSimpleUsersetBlock(plan ListPlan, pattern listUsersetPatter
 		).
 		SelectCol("object_id").
 		Distinct()
+
+	for _, pred := range plan.Exclusions.BuildPredicates() {
+		q.Where(pred)
+	}
 
 	return TypedQueryBlock{
 		Comments: []string{

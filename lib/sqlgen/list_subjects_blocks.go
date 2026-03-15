@@ -309,6 +309,32 @@ func buildListSubjectsUsersetPatternBlocks(plan ListPlan) ([]TypedQueryBlock, er
 func buildListSubjectsComplexUsersetBlock(plan ListPlan, pattern listUsersetPatternInput) TypedQueryBlock {
 	funcName := listSubjectsFunctionName(pattern.SubjectType, pattern.SubjectRelation)
 
+	conditions := []Expr{
+		Eq{Left: Col{Table: "t", Column: "object_type"}, Right: Lit(plan.ObjectType)},
+		Eq{Left: Col{Table: "t", Column: "object_id"}, Right: ObjectID},
+		In{Expr: Col{Table: "t", Column: "relation"}, Values: pattern.SourceRelations},
+		Eq{Left: Col{Table: "t", Column: "subject_type"}, Right: Lit(pattern.SubjectType)},
+		HasUserset{Source: Col{Table: "t", Column: "subject_id"}},
+		Eq{
+			Left:  UsersetRelation{Source: Col{Table: "t", Column: "subject_id"}},
+			Right: Lit(pattern.SubjectRelation),
+		},
+	}
+
+	// For exclusions on LATERAL join blocks, we must check each returned subject
+	// individually since the exclusion applies to the result (ls.subject_id), not the
+	// userset tuple (t.subject_id). Use the exclusion config with the returned subject's
+	// columns to build correct NOT EXISTS predicates.
+	if !plan.UseCTEExclusion && plan.HasExclusion {
+		resultExclusions := buildSimpleComplexExclusionInput(
+			plan.Analysis,
+			ObjectID,
+			Param("p_subject_type"),
+			Col{Table: "ls", Column: "subject_id"},
+		)
+		conditions = append(conditions, resultExclusions.BuildPredicates()...)
+	}
+
 	stmt := SelectStmt{
 		Distinct:    true,
 		ColumnExprs: []Expr{Col{Table: "ls", Column: "subject_id"}},
@@ -326,17 +352,7 @@ func buildListSubjectsComplexUsersetBlock(plan ListPlan, pattern listUsersetPatt
 				Alias: "ls",
 			},
 		}},
-		Where: And(
-			Eq{Left: Col{Table: "t", Column: "object_type"}, Right: Lit(plan.ObjectType)},
-			Eq{Left: Col{Table: "t", Column: "object_id"}, Right: ObjectID},
-			In{Expr: Col{Table: "t", Column: "relation"}, Values: pattern.SourceRelations},
-			Eq{Left: Col{Table: "t", Column: "subject_type"}, Right: Lit(pattern.SubjectType)},
-			HasUserset{Source: Col{Table: "t", Column: "subject_id"}},
-			Eq{
-				Left:  UsersetRelation{Source: Col{Table: "t", Column: "subject_id"}},
-				Right: Lit(pattern.SubjectRelation),
-			},
-		),
+		Where: And(conditions...),
 	}
 
 	return TypedQueryBlock{
