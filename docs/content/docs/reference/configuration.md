@@ -63,6 +63,7 @@ migrate:
 # Doctor command settings
 doctor:
   verbose: false
+  skip_performance: false
 ```
 
 ## Minimal Configuration
@@ -153,6 +154,7 @@ Configure under `doctor:`:
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `verbose` | bool | `false` | Show detailed output |
+| `skip_performance` | bool | `false` | Skip performance checks (view analysis) |
 
 ## Environment Variables
 
@@ -177,6 +179,7 @@ All configuration options can be set via environment variables with the `MELANGE
 | `MELANGE_MIGRATE_DRY_RUN` | `migrate.dry_run` |
 | `MELANGE_MIGRATE_FORCE` | `migrate.force` |
 | `MELANGE_DOCTOR_VERBOSE` | `doctor.verbose` |
+| `MELANGE_DOCTOR_SKIP_PERFORMANCE` | `doctor.skip_performance` |
 
 **Example:**
 ```bash

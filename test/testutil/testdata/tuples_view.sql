@@ -7,7 +7,7 @@ CREATE OR REPLACE VIEW melange_tuples AS
 SELECT
     'user' AS subject_type,
     user_id::text AS subject_id,
-    role AS relation,
+    role::text AS relation,
     'organization' AS object_type,
     organization_id::text AS object_id
 FROM organization_members
@@ -18,7 +18,7 @@ UNION ALL
 SELECT
     'user' AS subject_type,
     user_id::text AS subject_id,
-    role AS relation,
+    role::text AS relation,
     'team' AS object_type,
     team_id::text AS object_id
 FROM team_members
@@ -52,7 +52,7 @@ UNION ALL
 SELECT
     'user' AS subject_type,
     user_id::text AS subject_id,
-    role AS relation,
+    role::text AS relation,
     'repository' AS object_type,
     repository_id::text AS object_id
 FROM repository_collaborators
