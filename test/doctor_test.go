@@ -2,6 +2,7 @@ package test
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -47,6 +48,12 @@ func TestDoctor_MissingExpressionIndex(t *testing.T) {
 	db := testutil.DB(t)
 	ctx := context.Background()
 
+	// Restore view and indexes when done (important for shared remote DB in CI).
+	t.Cleanup(func() {
+		restoreView(t, db)
+		restoreIndexes(t, db)
+	})
+
 	// Template DB has all expression indexes — simplify view to one branch
 	// and drop its indexes to test the warning.
 	_, err := db.ExecContext(ctx, `DROP VIEW melange_tuples`)
@@ -56,7 +63,7 @@ func TestDoctor_MissingExpressionIndex(t *testing.T) {
 		SELECT
 			'user'::text AS subject_type,
 			user_id::text AS subject_id,
-			role AS relation,
+			role::text AS relation,
 			'organization'::text AS object_type,
 			organization_id::text AS object_id
 		FROM organization_members
@@ -89,6 +96,8 @@ func TestDoctor_MissingExpressionIndex(t *testing.T) {
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `CREATE INDEX idx_om_org_text ON organization_members ((organization_id::text))`)
 	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `CREATE INDEX idx_om_role_text ON organization_members ((role::text))`)
+	require.NoError(t, err)
 
 	d = doctor.New(db, "testutil/testdata")
 	report, err = d.Run(ctx)
@@ -106,6 +115,9 @@ func TestDoctor_UnionNotAll(t *testing.T) {
 
 	db := testutil.DB(t)
 	ctx := context.Background()
+
+	// Restore view when done (important for shared remote DB in CI).
+	t.Cleanup(func() { restoreView(t, db) })
 
 	// Drop and recreate with bare UNION to avoid column type mismatch
 	_, err := db.ExecContext(ctx, `DROP VIEW melange_tuples`)
@@ -200,6 +212,38 @@ func TestDoctor_TableNotView(t *testing.T) {
 
 	perfChecks := filterCategory(report, "Performance")
 	assert.Empty(t, perfChecks, "should have no performance checks when melange_tuples is a table")
+}
+
+// restoreView drops and re-creates the melange_tuples view from the canonical SQL.
+// This ensures doctor tests that modify the view don't break subsequent tests
+// when running against a shared database (CI remote DB mode).
+func restoreView(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	_, _ = db.ExecContext(ctx, `DROP VIEW IF EXISTS melange_tuples`)
+	_, err := db.ExecContext(ctx, testutil.TuplesViewSQL())
+	if err != nil {
+		t.Logf("warning: failed to restore melange_tuples view: %v", err)
+	}
+}
+
+// restoreIndexes re-creates expression indexes that doctor tests may have dropped.
+func restoreIndexes(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	indexes := []string{
+		`CREATE INDEX IF NOT EXISTS idx_org_members_obj_text ON organization_members ((organization_id::TEXT), (user_id::TEXT))`,
+		`CREATE INDEX IF NOT EXISTS idx_org_members_subj_text ON organization_members ((user_id::TEXT), (organization_id::TEXT))`,
+	}
+	for _, ddl := range indexes {
+		if _, err := db.ExecContext(ctx, ddl); err != nil {
+			t.Logf("warning: failed to restore index: %v", err)
+		}
+	}
+	// Clean up any temporary indexes created by the test
+	_, _ = db.ExecContext(ctx, `DROP INDEX IF EXISTS idx_om_user_text`)
+	_, _ = db.ExecContext(ctx, `DROP INDEX IF EXISTS idx_om_org_text`)
+	_, _ = db.ExecContext(ctx, `DROP INDEX IF EXISTS idx_om_role_text`)
 }
 
 // filterCategory returns all checks in a given category.
