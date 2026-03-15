@@ -209,11 +209,12 @@ melange doctor \
 
 **Flags:**
 
-| Flag        | Default              | Description                                  |
-| ----------- | -------------------- | -------------------------------------------- |
-| `--db`      | (from config)        | PostgreSQL connection string                 |
-| `--schema`  | `schemas/schema.fga` | Path to schema.fga file                      |
-| `--verbose` | `false`              | Show detailed output with additional context |
+| Flag                 | Default              | Description                                  |
+| -------------------- | -------------------- | -------------------------------------------- |
+| `--db`               | (from config)        | PostgreSQL connection string                 |
+| `--schema`           | `schemas/schema.fga` | Path to schema.fga file                      |
+| `--verbose`          | `false`              | Show detailed output with additional context |
+| `--skip-performance` | `false`              | Skip performance checks (view analysis)      |
 
 **Output:**
 
@@ -242,7 +243,13 @@ Data Health
   ✓ melange_tuples contains 1523 tuples
   ✓ All sampled tuples reference valid types and relations
 
-Summary: 11 passed, 0 warnings, 0 errors
+Performance
+  ✓ View definition parsed (3 branches)
+  ✓ View uses UNION ALL (no unnecessary deduplication)
+  ✓ Source tables: users, organizations, repositories
+  ✓ All ::text cast columns have expression indexes
+
+Summary: 15 passed, 0 warnings, 0 errors
 ```
 
 The doctor command performs the following checks:
@@ -277,6 +284,17 @@ The doctor command performs the following checks:
 - Reports tuple count
 - Validates that tuples reference valid types and relations defined in the schema
 
+**Performance** (view-based `melange_tuples` only):
+
+Performance checks run automatically when `melange_tuples` is a view (not a table or materialized view). They can be disabled with `--skip-performance`.
+
+- Parses the view definition via `pg_get_viewdef()` and reports the number of UNION branches and source tables
+- Detects bare `UNION` (warns to use `UNION ALL` instead, since `UNION` adds deduplication overhead)
+- Checks for missing expression indexes on columns cast with `::text` in the view definition. Missing indexes cause sequential scans on the source tables:
+  - **Warning** if the source table has fewer than 10,000 rows (recommended for future scaling)
+  - **Failure** if the source table has 10,000+ rows (critical at current scale)
+  - Provides exact `CREATE INDEX` statements as fix hints
+
 **Verbose mode:**
 
 Use `--verbose` to see additional details for each check:
@@ -303,6 +321,8 @@ This shows:
 | melange_tuples missing   | Create a view over your domain tables                 |
 | Missing columns          | Update melange_tuples to include all required columns |
 | Unknown types in tuples  | Update tuples view or schema to match                 |
+| UNION instead of UNION ALL | Replace `UNION` with `UNION ALL` in view definition |
+| Missing expression index | Run the `CREATE INDEX` command shown in the fix hint  |
 
 ---
 
@@ -596,6 +616,8 @@ Common scenarios where `doctor` helps:
 
 4. **Data migration issues** - Doctor samples tuples and validates they reference valid types and relations.
 
+5. **Slow permission checks** - Doctor detects missing expression indexes and inefficient view patterns that cause performance degradation at scale.
+
 ---
 
 ## Programmatic Alternative
@@ -655,7 +677,7 @@ import (
     "github.com/pthm/melange/lib/doctor"
 )
 
-d := doctor.New(db, "schemas/schema.fga")
+d := doctor.New(db, "schemas/schema.fga", doctor.Options{})
 report, err := d.Run(ctx)
 if err != nil {
     log.Fatal(err)
