@@ -22,7 +22,7 @@ func TestDoctor_FullHealthy(t *testing.T) {
 	db := testutil.DB(t)
 	ctx := context.Background()
 
-	d := doctor.New(db, "testutil/testdata")
+	d := doctor.New(db, "testutil/testdata/schema.fga")
 	report, err := d.Run(ctx)
 	require.NoError(t, err)
 
@@ -76,7 +76,7 @@ func TestDoctor_MissingExpressionIndex(t *testing.T) {
 	_, err = db.ExecContext(ctx, `DROP INDEX IF EXISTS idx_org_members_subj_text`)
 	require.NoError(t, err)
 
-	d := doctor.New(db, "testutil/testdata")
+	d := doctor.New(db, "testutil/testdata/schema.fga")
 	report, err := d.Run(ctx)
 	require.NoError(t, err)
 
@@ -99,7 +99,7 @@ func TestDoctor_MissingExpressionIndex(t *testing.T) {
 	_, err = db.ExecContext(ctx, `CREATE INDEX idx_om_role_text ON organization_members ((role::text))`)
 	require.NoError(t, err)
 
-	d = doctor.New(db, "testutil/testdata")
+	d = doctor.New(db, "testutil/testdata/schema.fga")
 	report, err = d.Run(ctx)
 	require.NoError(t, err)
 
@@ -143,7 +143,7 @@ func TestDoctor_UnionNotAll(t *testing.T) {
 	`)
 	require.NoError(t, err)
 
-	d := doctor.New(db, "testutil/testdata")
+	d := doctor.New(db, "testutil/testdata/schema.fga")
 	report, err := d.Run(ctx)
 	require.NoError(t, err)
 
@@ -177,7 +177,7 @@ func TestDoctor_NoView(t *testing.T) {
 	db := testutil.EmptyDB(t)
 	ctx := context.Background()
 
-	d := doctor.New(db, "testutil/testdata")
+	d := doctor.New(db, "testutil/testdata/schema.fga")
 	report, err := d.Run(ctx)
 	require.NoError(t, err)
 
@@ -185,8 +185,9 @@ func TestDoctor_NoView(t *testing.T) {
 	assert.Empty(t, perfChecks, "should have no performance checks without melange_tuples")
 }
 
-// TestDoctor_TableNotView verifies performance checks are skipped when melange_tuples is a table.
-func TestDoctor_TableNotView(t *testing.T) {
+// TestDoctor_TableNoIndexes verifies that a melange_tuples table without indexes
+// produces warnings recommending the indexes needed for melange query patterns.
+func TestDoctor_TableNoIndexes(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
@@ -194,7 +195,7 @@ func TestDoctor_TableNotView(t *testing.T) {
 	db := testutil.EmptyDB(t)
 	ctx := context.Background()
 
-	// Create melange_tuples as a table (not a view)
+	// Create melange_tuples as a table with no indexes.
 	_, err := db.ExecContext(ctx, `
 		CREATE TABLE melange_tuples (
 			subject_type text,
@@ -206,12 +207,357 @@ func TestDoctor_TableNotView(t *testing.T) {
 	`)
 	require.NoError(t, err)
 
-	d := doctor.New(db, "testutil/testdata")
+	d := doctor.New(db, "testutil/testdata/schema.fga")
 	report, err := d.Run(ctx)
 	require.NoError(t, err)
 
 	perfChecks := filterCategory(report, "Performance")
-	assert.Empty(t, perfChecks, "should have no performance checks when melange_tuples is a table")
+	assert.NotEmpty(t, perfChecks, "should have performance checks for table")
+
+	// Should warn about both missing indexes.
+	warnings := 0
+	for _, c := range perfChecks {
+		if c.Name == "table_indexes" && c.Status != doctor.StatusPass {
+			warnings++
+			assert.Contains(t, c.FixHint, "CREATE INDEX", "should provide CREATE INDEX fix hint")
+			assert.Contains(t, c.FixHint, "melange_tuples", "fix hint should reference melange_tuples")
+		}
+	}
+	assert.Equal(t, 2, warnings, "should warn about both check_lookup and list_objects indexes")
+}
+
+// TestDoctor_TableWithIndexes verifies that a melange_tuples table with the
+// recommended indexes passes the performance check.
+func TestDoctor_TableWithIndexes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	db := testutil.EmptyDB(t)
+	ctx := context.Background()
+
+	_, err := db.ExecContext(ctx, `
+		CREATE TABLE melange_tuples (
+			subject_type text,
+			subject_id text,
+			relation text,
+			object_type text,
+			object_id text
+		)
+	`)
+	require.NoError(t, err)
+
+	// Create both recommended indexes.
+	_, err = db.ExecContext(ctx, `
+		CREATE INDEX idx_melange_tuples_check_lookup
+		ON melange_tuples (object_type, object_id, relation, subject_type, subject_id)
+	`)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `
+		CREATE INDEX idx_melange_tuples_list_objects
+		ON melange_tuples (object_type, relation, subject_type, subject_id, object_id)
+	`)
+	require.NoError(t, err)
+
+	d := doctor.New(db, "testutil/testdata/schema.fga")
+	report, err := d.Run(ctx)
+	require.NoError(t, err)
+
+	perfChecks := filterCategory(report, "Performance")
+	assertCheck(t, perfChecks, "table_indexes", doctor.StatusPass)
+}
+
+// TestDoctor_TablePartialIndexCoverage verifies that having only one of the two
+// recommended indexes produces a warning for the missing one while the covered
+// one passes silently.
+func TestDoctor_TablePartialIndexCoverage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	db := testutil.EmptyDB(t)
+	ctx := context.Background()
+
+	_, err := db.ExecContext(ctx, `
+		CREATE TABLE melange_tuples (
+			subject_type text,
+			subject_id text,
+			relation text,
+			object_type text,
+			object_id text
+		)
+	`)
+	require.NoError(t, err)
+
+	// Only create the check_lookup index, omit list_objects.
+	_, err = db.ExecContext(ctx, `
+		CREATE INDEX idx_melange_tuples_check_lookup
+		ON melange_tuples (object_type, object_id, relation, subject_type, subject_id)
+	`)
+	require.NoError(t, err)
+
+	d := doctor.New(db, "testutil/testdata/schema.fga")
+	report, err := d.Run(ctx)
+	require.NoError(t, err)
+
+	perfChecks := filterCategory(report, "Performance")
+	assert.NotEmpty(t, perfChecks, "should have performance checks")
+
+	// Should warn about exactly one missing index (list_objects).
+	warnings := 0
+	for _, c := range perfChecks {
+		if c.Name == "table_indexes" && c.Status != doctor.StatusPass {
+			warnings++
+			assert.Contains(t, c.Message, "list_objects", "warning should be about the missing list_objects index")
+		}
+	}
+	assert.Equal(t, 1, warnings, "should warn about exactly one missing index")
+}
+
+// TestDoctor_TableBroaderIndexSatisfiesRecommendation verifies that an index
+// with extra trailing columns still satisfies a narrower recommendation.
+func TestDoctor_TableBroaderIndexSatisfiesRecommendation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	db := testutil.EmptyDB(t)
+	ctx := context.Background()
+
+	_, err := db.ExecContext(ctx, `
+		CREATE TABLE melange_tuples (
+			subject_type text,
+			subject_id text,
+			relation text,
+			object_type text,
+			object_id text,
+			extra_col text
+		)
+	`)
+	require.NoError(t, err)
+
+	// Create indexes with an extra trailing column beyond the recommendation.
+	_, err = db.ExecContext(ctx, `
+		CREATE INDEX idx_broad_check
+		ON melange_tuples (object_type, object_id, relation, subject_type, subject_id, extra_col)
+	`)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `
+		CREATE INDEX idx_broad_list
+		ON melange_tuples (object_type, relation, subject_type, subject_id, object_id, extra_col)
+	`)
+	require.NoError(t, err)
+
+	d := doctor.New(db, "testutil/testdata/schema.fga")
+	report, err := d.Run(ctx)
+	require.NoError(t, err)
+
+	perfChecks := filterCategory(report, "Performance")
+	assertCheck(t, perfChecks, "table_indexes", doctor.StatusPass)
+}
+
+// TestDoctor_OrphanedTuples_UnknownObjectType verifies that tuples with an
+// object_type not in the schema produce a warning with affected tuple count.
+func TestDoctor_OrphanedTuples_UnknownObjectType(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	db := testutil.EmptyDB(t)
+	ctx := context.Background()
+
+	_, err := db.ExecContext(ctx, `
+		CREATE TABLE melange_tuples (
+			subject_type text, subject_id text, relation text,
+			object_type text, object_id text
+		)
+	`)
+	require.NoError(t, err)
+
+	_, err = db.ExecContext(ctx, `
+		INSERT INTO melange_tuples VALUES
+		('user', '1', 'owner', 'organization', 'org1'),
+		('user', '2', 'viewer', 'widget', 'w1'),
+		('user', '3', 'viewer', 'widget', 'w2')
+	`)
+	require.NoError(t, err)
+
+	d := doctor.New(db, "testutil/testdata/schema.fga")
+	report, err := d.Run(ctx)
+	require.NoError(t, err)
+
+	checks := filterCategory(report, "Data Health")
+	found := false
+	for _, c := range checks {
+		if c.Name == "unknown_object_types" {
+			found = true
+			assert.Equal(t, doctor.StatusWarn, c.Status)
+			assert.Contains(t, c.Details, "widget")
+			assert.Contains(t, c.Details, "2 tuples")
+		}
+	}
+	assert.True(t, found, "should report unknown object types")
+}
+
+// TestDoctor_OrphanedTuples_UnknownRelation verifies that tuples with a relation
+// not defined on their object type produce a warning.
+func TestDoctor_OrphanedTuples_UnknownRelation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	db := testutil.EmptyDB(t)
+	ctx := context.Background()
+
+	_, err := db.ExecContext(ctx, `
+		CREATE TABLE melange_tuples (
+			subject_type text, subject_id text, relation text,
+			object_type text, object_id text
+		)
+	`)
+	require.NoError(t, err)
+
+	// "organization" is valid but "superadmin" is not a relation on it.
+	_, err = db.ExecContext(ctx, `
+		INSERT INTO melange_tuples VALUES
+		('user', '1', 'owner', 'organization', 'org1'),
+		('user', '2', 'superadmin', 'organization', 'org1')
+	`)
+	require.NoError(t, err)
+
+	d := doctor.New(db, "testutil/testdata/schema.fga")
+	report, err := d.Run(ctx)
+	require.NoError(t, err)
+
+	checks := filterCategory(report, "Data Health")
+	found := false
+	for _, c := range checks {
+		if c.Name == "unknown_relations" {
+			found = true
+			assert.Equal(t, doctor.StatusWarn, c.Status)
+			assert.Contains(t, c.Details, "organization:superadmin")
+		}
+	}
+	assert.True(t, found, "should report unknown relations")
+}
+
+// TestDoctor_OrphanedTuples_UnknownSubjectType verifies that tuples with a
+// subject_type not defined in the schema produce a warning.
+func TestDoctor_OrphanedTuples_UnknownSubjectType(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	db := testutil.EmptyDB(t)
+	ctx := context.Background()
+
+	_, err := db.ExecContext(ctx, `
+		CREATE TABLE melange_tuples (
+			subject_type text, subject_id text, relation text,
+			object_type text, object_id text
+		)
+	`)
+	require.NoError(t, err)
+
+	_, err = db.ExecContext(ctx, `
+		INSERT INTO melange_tuples VALUES
+		('user', '1', 'owner', 'organization', 'org1'),
+		('device', 'd1', 'member', 'organization', 'org1')
+	`)
+	require.NoError(t, err)
+
+	d := doctor.New(db, "testutil/testdata/schema.fga")
+	report, err := d.Run(ctx)
+	require.NoError(t, err)
+
+	checks := filterCategory(report, "Data Health")
+	found := false
+	for _, c := range checks {
+		if c.Name == "unknown_subject_types" {
+			found = true
+			assert.Equal(t, doctor.StatusWarn, c.Status)
+			assert.Contains(t, c.Details, "device")
+		}
+	}
+	assert.True(t, found, "should report unknown subject types")
+}
+
+// TestDoctor_OrphanedTuples_InvalidSubjectType verifies that tuples with a
+// subject_type not allowed by the relation definition produce a warning.
+func TestDoctor_OrphanedTuples_InvalidSubjectType(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	db := testutil.EmptyDB(t)
+	ctx := context.Background()
+
+	_, err := db.ExecContext(ctx, `
+		CREATE TABLE melange_tuples (
+			subject_type text, subject_id text, relation text,
+			object_type text, object_id text
+		)
+	`)
+	require.NoError(t, err)
+
+	// "organization:owner" only allows [user] as subject type per the test schema.
+	_, err = db.ExecContext(ctx, `
+		INSERT INTO melange_tuples VALUES
+		('user', '1', 'owner', 'organization', 'org1'),
+		('organization', 'org2', 'owner', 'organization', 'org1')
+	`)
+	require.NoError(t, err)
+
+	d := doctor.New(db, "testutil/testdata/schema.fga")
+	report, err := d.Run(ctx)
+	require.NoError(t, err)
+
+	checks := filterCategory(report, "Data Health")
+	found := false
+	for _, c := range checks {
+		if c.Name == "invalid_subject_types" {
+			found = true
+			assert.Equal(t, doctor.StatusWarn, c.Status)
+			assert.Contains(t, c.Details, "organization:owner")
+			assert.Contains(t, c.Details, "subject_type=organization")
+		}
+	}
+	assert.True(t, found, "should report invalid subject type assignments")
+}
+
+// TestDoctor_OrphanedTuples_Clean verifies that the fully migrated test database
+// with valid tuples passes all data health checks.
+func TestDoctor_OrphanedTuples_Clean(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	db := testutil.EmptyDB(t)
+	ctx := context.Background()
+
+	_, err := db.ExecContext(ctx, `
+		CREATE TABLE melange_tuples (
+			subject_type text, subject_id text, relation text,
+			object_type text, object_id text
+		)
+	`)
+	require.NoError(t, err)
+
+	// Insert only tuples that are valid per the test schema.
+	_, err = db.ExecContext(ctx, `
+		INSERT INTO melange_tuples VALUES
+		('user', '1', 'owner', 'organization', 'org1'),
+		('user', '2', 'member', 'organization', 'org1'),
+		('organization', 'org1', 'org', 'repository', 'repo1')
+	`)
+	require.NoError(t, err)
+
+	d := doctor.New(db, "testutil/testdata/schema.fga")
+	report, err := d.Run(ctx)
+	require.NoError(t, err)
+
+	checks := filterCategory(report, "Data Health")
+	assertCheck(t, checks, "valid", doctor.StatusPass)
 }
 
 // restoreView drops and re-creates the melange_tuples view from the canonical SQL.
