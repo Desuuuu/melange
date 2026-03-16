@@ -1,0 +1,360 @@
+# Melange-specific tests: Self-Referential Userset patterns
+# These exercise the selfref block generators in list_objects and list_subjects.
+#
+# Test names are prefixed with "melange/" by the loader to avoid collisions
+# with official test names.
+
+tests:
+  # ---------------------------------------------------------------------------
+  # selfref_group_membership
+  # Pattern: group.member: [user, group#member]
+  # A group's members include direct users AND members of nested groups.
+  # This is the canonical self-referential userset pattern.
+  # ---------------------------------------------------------------------------
+  - name: selfref_group_membership
+    stages:
+      - model: |
+          model
+            schema 1.1
+
+          type user
+
+          type group
+            relations
+              define member: [user, group#member]
+        tuples:
+          # Direct members of groups
+          - user: user:alice
+            relation: member
+            object: group:engineering
+          - user: user:bob
+            relation: member
+            object: group:backend
+          # backend is a sub-group of engineering
+          - user: group:backend#member
+            relation: member
+            object: group:engineering
+          # charlie is only in backend
+          - user: user:charlie
+            relation: member
+            object: group:backend
+        checkAssertions:
+          - name: alice_direct_member_of_engineering
+            tuple:
+              user: user:alice
+              relation: member
+              object: group:engineering
+            expectation: true
+          - name: bob_direct_member_of_backend
+            tuple:
+              user: user:bob
+              relation: member
+              object: group:backend
+            expectation: true
+          - name: charlie_member_of_engineering_via_backend
+            tuple:
+              user: user:charlie
+              relation: member
+              object: group:engineering
+            expectation: true
+          - name: alice_not_member_of_backend
+            tuple:
+              user: user:alice
+              relation: member
+              object: group:backend
+            expectation: false
+          - name: bob_member_of_engineering_via_backend
+            tuple:
+              user: user:bob
+              relation: member
+              object: group:engineering
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:charlie
+              type: group
+              relation: member
+            expectation:
+              - group:backend
+              - group:engineering
+          - request:
+              user: user:alice
+              type: group
+              relation: member
+            expectation:
+              - group:engineering
+
+  # ---------------------------------------------------------------------------
+  # selfref_group_with_viewer_permission
+  # Pattern: group.member: [user, group#member]
+  #          document.viewer: [user, group#member]
+  # Exercises the closure pattern path in selfref: a permission on another type
+  # references the self-referential relation, requiring group expansion.
+  # ---------------------------------------------------------------------------
+  - name: selfref_group_with_viewer_permission
+    stages:
+      - model: |
+          model
+            schema 1.1
+
+          type user
+
+          type group
+            relations
+              define member: [user, group#member]
+
+          type document
+            relations
+              define viewer: [user, group#member]
+        tuples:
+          - user: user:alice
+            relation: member
+            object: group:engineering
+          - user: user:bob
+            relation: member
+            object: group:backend
+          - user: group:backend#member
+            relation: member
+            object: group:engineering
+          # engineering group can view doc1
+          - user: group:engineering#member
+            relation: viewer
+            object: document:doc1
+          # backend group can view doc2
+          - user: group:backend#member
+            relation: viewer
+            object: document:doc2
+          # direct user viewer
+          - user: user:charlie
+            relation: viewer
+            object: document:doc3
+        checkAssertions:
+          - name: alice_can_view_doc1_via_engineering
+            tuple:
+              user: user:alice
+              relation: viewer
+              object: document:doc1
+            expectation: true
+          - name: bob_can_view_doc1_via_backend_then_engineering
+            tuple:
+              user: user:bob
+              relation: viewer
+              object: document:doc1
+            expectation: true
+          - name: bob_can_view_doc2_via_backend
+            tuple:
+              user: user:bob
+              relation: viewer
+              object: document:doc2
+            expectation: true
+          - name: alice_cannot_view_doc2
+            tuple:
+              user: user:alice
+              relation: viewer
+              object: document:doc2
+            expectation: false
+          - name: charlie_can_view_doc3
+            tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:doc3
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:bob
+              type: document
+              relation: viewer
+            expectation:
+              - document:doc1
+              - document:doc2
+          - request:
+              user: user:alice
+              type: document
+              relation: viewer
+            expectation:
+              - document:doc1
+
+  # ---------------------------------------------------------------------------
+  # selfref_nested_three_levels
+  # Pattern: group.member: [user, group#member] with 3-level nesting
+  # Exercises recursive expansion beyond two levels.
+  # ---------------------------------------------------------------------------
+  - name: selfref_nested_three_levels
+    stages:
+      - model: |
+          model
+            schema 1.1
+
+          type user
+
+          type group
+            relations
+              define member: [user, group#member]
+        tuples:
+          - user: user:alice
+            relation: member
+            object: group:team-a
+          - user: group:team-a#member
+            relation: member
+            object: group:division
+          - user: group:division#member
+            relation: member
+            object: group:company
+        checkAssertions:
+          - name: alice_member_of_team
+            tuple:
+              user: user:alice
+              relation: member
+              object: group:team-a
+            expectation: true
+          - name: alice_member_of_division_via_team
+            tuple:
+              user: user:alice
+              relation: member
+              object: group:division
+            expectation: true
+          - name: alice_member_of_company_via_division_via_team
+            tuple:
+              user: user:alice
+              relation: member
+              object: group:company
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:alice
+              type: group
+              relation: member
+            expectation:
+              - group:team-a
+              - group:division
+              - group:company
+
+  # ---------------------------------------------------------------------------
+  # selfref_with_implied_role
+  # Pattern: group.member: [user, group#member]
+  #          group.admin: [user] or member
+  # Self-referential userset combined with a computed (implied) role.
+  # Exercises complex closure paths through the selfref expansion.
+  # ---------------------------------------------------------------------------
+  - name: selfref_with_implied_role
+    stages:
+      - model: |
+          model
+            schema 1.1
+
+          type user
+
+          type group
+            relations
+              define member: [user, group#member]
+              define admin: [user] or member
+        tuples:
+          - user: user:alice
+            relation: member
+            object: group:backend
+          - user: group:backend#member
+            relation: member
+            object: group:engineering
+          - user: user:bob
+            relation: admin
+            object: group:engineering
+        checkAssertions:
+          - name: alice_admin_of_engineering_via_member_via_backend
+            tuple:
+              user: user:alice
+              relation: admin
+              object: group:engineering
+            expectation: true
+          - name: bob_admin_of_engineering_direct
+            tuple:
+              user: user:bob
+              relation: admin
+              object: group:engineering
+            expectation: true
+          - name: bob_not_admin_of_backend
+            tuple:
+              user: user:bob
+              relation: admin
+              object: group:backend
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:alice
+              type: group
+              relation: admin
+            expectation:
+              - group:backend
+              - group:engineering
+          - request:
+              user: user:bob
+              type: group
+              relation: admin
+            expectation:
+              - group:engineering
+
+  # ---------------------------------------------------------------------------
+  # selfref_with_exclusion
+  # Pattern: group.member: [user, group#member]
+  #          group.blocked: [user]
+  #          group.active_member: member but not blocked
+  # Self-referential userset with exclusion on the derived permission.
+  # Exercises the exclusion predicate path in selfref blocks.
+  # ---------------------------------------------------------------------------
+  - name: selfref_with_exclusion
+    stages:
+      - model: |
+          model
+            schema 1.1
+
+          type user
+
+          type group
+            relations
+              define member: [user, group#member]
+              define blocked: [user]
+              define active_member: member but not blocked
+        tuples:
+          - user: user:alice
+            relation: member
+            object: group:engineering
+          - user: user:bob
+            relation: member
+            object: group:backend
+          - user: group:backend#member
+            relation: member
+            object: group:engineering
+          - user: user:bob
+            relation: blocked
+            object: group:engineering
+        checkAssertions:
+          - name: alice_active_member_of_engineering
+            tuple:
+              user: user:alice
+              relation: active_member
+              object: group:engineering
+            expectation: true
+          - name: bob_not_active_member_blocked
+            tuple:
+              user: user:bob
+              relation: active_member
+              object: group:engineering
+            expectation: false
+          - name: bob_active_member_of_backend_not_blocked_there
+            tuple:
+              user: user:bob
+              relation: active_member
+              object: group:backend
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:alice
+              type: group
+              relation: active_member
+            expectation:
+              - group:engineering
+          - request:
+              user: user:bob
+              type: group
+              relation: active_member
+            expectation:
+              - group:backend

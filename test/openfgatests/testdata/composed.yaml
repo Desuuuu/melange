@@ -1,0 +1,308 @@
+# Melange-specific tests: Composed Relation patterns
+# These exercise the composed block generators for indirect anchor patterns
+# (TTU and userset composition).
+#
+# Test names are prefixed with "melange/" by the loader to avoid collisions
+# with official test names.
+
+tests:
+  # ---------------------------------------------------------------------------
+  # composed_ttu_with_recursive_parent
+  # Pattern: folder.parent: [folder]
+  #          folder.viewer: [user]
+  #          document.parent: [folder]
+  #          document.viewer: viewer from parent
+  # TTU composition where the parent type can recursively reference itself.
+  # Exercises the recursive TTU block path in composed generators.
+  # ---------------------------------------------------------------------------
+  - name: composed_ttu_with_recursive_parent
+    stages:
+      - model: |
+          model
+            schema 1.1
+
+          type user
+
+          type folder
+            relations
+              define parent: [folder]
+              define viewer: [user] or viewer from parent
+        tuples:
+          - user: user:alice
+            relation: viewer
+            object: folder:root
+          - user: folder:root
+            relation: parent
+            object: folder:projects
+          - user: folder:projects
+            relation: parent
+            object: folder:docs
+          - user: user:bob
+            relation: viewer
+            object: folder:projects
+        checkAssertions:
+          - name: alice_can_view_root
+            tuple:
+              user: user:alice
+              relation: viewer
+              object: folder:root
+            expectation: true
+          - name: alice_can_view_projects_via_root
+            tuple:
+              user: user:alice
+              relation: viewer
+              object: folder:projects
+            expectation: true
+          - name: alice_can_view_docs_via_root_via_projects
+            tuple:
+              user: user:alice
+              relation: viewer
+              object: folder:docs
+            expectation: true
+          - name: bob_can_view_projects
+            tuple:
+              user: user:bob
+              relation: viewer
+              object: folder:projects
+            expectation: true
+          - name: bob_can_view_docs_via_projects
+            tuple:
+              user: user:bob
+              relation: viewer
+              object: folder:docs
+            expectation: true
+          - name: bob_cannot_view_root
+            tuple:
+              user: user:bob
+              relation: viewer
+              object: folder:root
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:alice
+              type: folder
+              relation: viewer
+            expectation:
+              - folder:root
+              - folder:projects
+              - folder:docs
+          - request:
+              user: user:bob
+              type: folder
+              relation: viewer
+            expectation:
+              - folder:projects
+              - folder:docs
+
+  # ---------------------------------------------------------------------------
+  # composed_userset_indirect
+  # Pattern: team.member: [user]
+  #          project.team: [team#member]
+  #          project.viewer: team
+  # Userset composition: viewer is computed from team, which references
+  # team#member. Exercises the userset composition block path.
+  # ---------------------------------------------------------------------------
+  - name: composed_userset_indirect
+    stages:
+      - model: |
+          model
+            schema 1.1
+
+          type user
+
+          type team
+            relations
+              define member: [user]
+
+          type project
+            relations
+              define team: [team#member]
+              define viewer: team
+        tuples:
+          - user: user:alice
+            relation: member
+            object: team:backend
+          - user: user:bob
+            relation: member
+            object: team:frontend
+          - user: team:backend#member
+            relation: team
+            object: project:api
+          - user: team:frontend#member
+            relation: team
+            object: project:webapp
+        checkAssertions:
+          - name: alice_viewer_of_api_via_backend_team
+            tuple:
+              user: user:alice
+              relation: viewer
+              object: project:api
+            expectation: true
+          - name: bob_viewer_of_webapp_via_frontend_team
+            tuple:
+              user: user:bob
+              relation: viewer
+              object: project:webapp
+            expectation: true
+          - name: alice_not_viewer_of_webapp
+            tuple:
+              user: user:alice
+              relation: viewer
+              object: project:webapp
+            expectation: false
+          - name: bob_not_viewer_of_api
+            tuple:
+              user: user:bob
+              relation: viewer
+              object: project:api
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:alice
+              type: project
+              relation: viewer
+            expectation:
+              - project:api
+          - request:
+              user: user:bob
+              type: project
+              relation: viewer
+            expectation:
+              - project:webapp
+
+  # ---------------------------------------------------------------------------
+  # composed_ttu_with_exclusion
+  # Pattern: folder.viewer: [user]
+  #          folder.blocked: [user]
+  #          document.parent: [folder]
+  #          document.viewer: viewer from parent but not blocked_viewer
+  #          document.blocked_viewer: blocked from parent
+  # TTU composition with exclusion — viewer inherits from parent but can be
+  # blocked. Exercises exclusion predicates in composed blocks.
+  # ---------------------------------------------------------------------------
+  - name: composed_ttu_with_exclusion
+    stages:
+      - model: |
+          model
+            schema 1.1
+
+          type user
+
+          type folder
+            relations
+              define viewer: [user]
+              define blocked: [user]
+
+          type document
+            relations
+              define parent: [folder]
+              define blocked_viewer: blocked from parent
+              define viewer: viewer from parent but not blocked_viewer
+        tuples:
+          - user: user:alice
+            relation: viewer
+            object: folder:shared
+          - user: user:bob
+            relation: viewer
+            object: folder:shared
+          - user: user:bob
+            relation: blocked
+            object: folder:shared
+          - user: folder:shared
+            relation: parent
+            object: document:report
+        checkAssertions:
+          - name: alice_can_view_document_via_folder
+            tuple:
+              user: user:alice
+              relation: viewer
+              object: document:report
+            expectation: true
+          - name: bob_blocked_from_document
+            tuple:
+              user: user:bob
+              relation: viewer
+              object: document:report
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:alice
+              type: document
+              relation: viewer
+            expectation:
+              - document:report
+          - request:
+              user: user:bob
+              type: document
+              relation: viewer
+            expectation: []
+
+  # ---------------------------------------------------------------------------
+  # composed_ttu_cross_type
+  # Pattern: org.member: [user]
+  #          project.org: [org]
+  #          project.viewer: member from org
+  # TTU across different types — project inherits viewers from org members.
+  # Exercises the cross-type TTU path in composed generators.
+  # ---------------------------------------------------------------------------
+  - name: composed_ttu_cross_type
+    stages:
+      - model: |
+          model
+            schema 1.1
+
+          type user
+
+          type org
+            relations
+              define member: [user]
+
+          type project
+            relations
+              define org: [org]
+              define viewer: member from org
+        tuples:
+          - user: user:alice
+            relation: member
+            object: org:acme
+          - user: user:bob
+            relation: member
+            object: org:globex
+          - user: org:acme
+            relation: org
+            object: project:alpha
+          - user: org:globex
+            relation: org
+            object: project:beta
+        checkAssertions:
+          - name: alice_viewer_of_alpha_via_acme
+            tuple:
+              user: user:alice
+              relation: viewer
+              object: project:alpha
+            expectation: true
+          - name: bob_viewer_of_beta_via_globex
+            tuple:
+              user: user:bob
+              relation: viewer
+              object: project:beta
+            expectation: true
+          - name: alice_not_viewer_of_beta
+            tuple:
+              user: user:alice
+              relation: viewer
+              object: project:beta
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:alice
+              type: project
+              relation: viewer
+            expectation:
+              - project:alpha
+          - request:
+              user: user:bob
+              type: project
+              relation: viewer
+            expectation:
+              - project:beta
