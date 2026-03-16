@@ -94,18 +94,22 @@ func hasBareUnion(sql string) bool {
 func splitUnionAll(sql string) []string {
 	upper := strings.ToUpper(sql)
 
-	var parts []string
+	var result []string
 	remaining := sql
 	remainingUpper := upper
 
 	for {
 		pos := strings.Index(remainingUpper, "UNION")
 		if pos == -1 {
-			parts = append(parts, remaining)
+			if trimmed := strings.TrimSpace(remaining); trimmed != "" {
+				result = append(result, trimmed)
+			}
 			break
 		}
 
-		parts = append(parts, remaining[:pos])
+		if trimmed := strings.TrimSpace(remaining[:pos]); trimmed != "" {
+			result = append(result, trimmed)
+		}
 
 		// Skip "UNION" and optional "ALL"
 		skip := 5 // len("UNION")
@@ -118,15 +122,6 @@ func splitUnionAll(sql string) []string {
 
 		remaining = remaining[pos+skip:]
 		remainingUpper = remainingUpper[pos+skip:]
-	}
-
-	// Filter empty parts
-	var result []string
-	for _, p := range parts {
-		trimmed := strings.TrimSpace(p)
-		if trimmed != "" {
-			result = append(result, trimmed)
-		}
 	}
 	return result
 }
@@ -163,15 +158,13 @@ func parseBranch(sql string) (*ViewBranch, error) {
 			continue
 		}
 
-		// Skip SELECT keyword line
-		if upper == "SELECT" {
-			continue
-		}
-
-		// Parse column expression: `expr AS alias` or `SELECT expr AS alias`
+		// Strip leading SELECT keyword; skip if nothing follows.
 		expr := trimmed
 		if strings.HasPrefix(upper, "SELECT") {
-			expr = strings.TrimSpace(trimmed[6:])
+			expr = strings.TrimSpace(trimmed[len("SELECT"):])
+			if expr == "" {
+				continue
+			}
 		}
 
 		// Remove trailing comma
@@ -462,7 +455,7 @@ func parseColumnExpr(expr string) (alias, sourceExpr string) {
 	upper := strings.ToUpper(expr)
 
 	// Find AS outside of CASE/END blocks
-	asPos := findLastAS(expr, upper)
+	asPos := findLastAS(upper)
 	if asPos == -1 {
 		return "", ""
 	}
@@ -475,7 +468,7 @@ func parseColumnExpr(expr string) (alias, sourceExpr string) {
 
 // findLastAS finds the position of the last " AS " in the expression,
 // skipping any that appear inside CASE...END blocks.
-func findLastAS(_, upper string) int {
+func findLastAS(upper string) int {
 	// Find all " AS " positions
 	lastPos := -1
 	depth := 0 // CASE nesting depth

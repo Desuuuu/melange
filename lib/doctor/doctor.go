@@ -199,13 +199,20 @@ func (d *Doctor) Run(ctx context.Context) (*Report, error) {
 		return nil, fmt.Errorf("checking data health: %w", err)
 	}
 
-	// Performance checks (only for views, skip if disabled)
-	if !d.opts.SkipPerformance && d.tuplesInfo != nil && d.tuplesInfo.Exists && d.tuplesInfo.RelKind == "v" {
-		if err := d.checkViewDefinition(ctx, report); err != nil {
-			return nil, fmt.Errorf("checking view definition: %w", err)
-		}
-		if err := d.checkExpressionIndexes(ctx, report); err != nil {
-			return nil, fmt.Errorf("checking expression indexes: %w", err)
+	// Performance checks (skip if disabled)
+	if !d.opts.SkipPerformance && d.tuplesInfo != nil && d.tuplesInfo.Exists {
+		switch d.tuplesInfo.RelKind {
+		case "v":
+			if err := d.checkViewDefinition(ctx, report); err != nil {
+				return nil, fmt.Errorf("checking view definition: %w", err)
+			}
+			if err := d.checkExpressionIndexes(ctx, report); err != nil {
+				return nil, fmt.Errorf("checking expression indexes: %w", err)
+			}
+		case "r":
+			if err := d.checkTableIndexes(ctx, report); err != nil {
+				return nil, fmt.Errorf("checking table indexes: %w", err)
+			}
 		}
 	}
 
@@ -415,10 +422,10 @@ func (d *Doctor) checkGeneratedFunctions(ctx context.Context, report *Report) er
 		currentSet[fn] = true
 	}
 
-	missingDispatchers := []string{}
-	for _, d := range dispatchers {
-		if !currentSet[d] {
-			missingDispatchers = append(missingDispatchers, d)
+	var missingDispatchers []string
+	for _, name := range dispatchers {
+		if !currentSet[name] {
+			missingDispatchers = append(missingDispatchers, name)
 		}
 	}
 
@@ -447,14 +454,11 @@ func (d *Doctor) checkGeneratedFunctions(ctx context.Context, report *Report) er
 		expectedFuncs := sqlgen.CollectFunctionNames(analyses)
 		d.expectedFuncs = expectedFuncs
 
-		expectedSet := make(map[string]bool)
-		for _, fn := range expectedFuncs {
-			expectedSet[fn] = true
-		}
-
-		// Find missing functions
+		// Build expected set and find missing functions in a single pass.
+		expectedSet := make(map[string]bool, len(expectedFuncs))
 		var missing []string
 		for _, fn := range expectedFuncs {
+			expectedSet[fn] = true
 			if !currentSet[fn] {
 				missing = append(missing, fn)
 			}
@@ -470,16 +474,12 @@ func (d *Doctor) checkGeneratedFunctions(ctx context.Context, report *Report) er
 
 		if len(missing) > 0 {
 			sort.Strings(missing)
-			details := strings.Join(missing, "\n")
-			if len(missing) > 10 {
-				details = strings.Join(missing[:10], "\n") + fmt.Sprintf("\n... and %d more", len(missing)-10)
-			}
 			report.AddCheck(CheckResult{
 				Category: "Generated Functions",
 				Name:     "missing",
 				Status:   StatusFail,
 				Message:  fmt.Sprintf("%d expected functions missing from database", len(missing)),
-				Details:  details,
+				Details:  truncatedJoin(missing, 10),
 				FixHint:  "Run 'melange migrate' to create functions",
 			})
 		} else {
@@ -493,16 +493,12 @@ func (d *Doctor) checkGeneratedFunctions(ctx context.Context, report *Report) er
 
 		if len(orphans) > 0 {
 			sort.Strings(orphans)
-			details := strings.Join(orphans, "\n")
-			if len(orphans) > 10 {
-				details = strings.Join(orphans[:10], "\n") + fmt.Sprintf("\n... and %d more", len(orphans)-10)
-			}
 			report.AddCheck(CheckResult{
 				Category: "Generated Functions",
 				Name:     "orphans",
 				Status:   StatusWarn,
 				Message:  fmt.Sprintf("%d orphan functions from previous schema", len(orphans)),
-				Details:  details,
+				Details:  truncatedJoin(orphans, 10),
 				FixHint:  "Run 'melange migrate' to clean up orphans",
 			})
 		}
@@ -819,6 +815,15 @@ func (d *Doctor) getTuplesInfo(ctx context.Context) (*TuplesInfo, error) {
 	}
 
 	return info, rows.Err()
+}
+
+// truncatedJoin joins items with newlines, truncating after maxItems with a
+// summary of the remainder. Returns all items when maxItems <= 0.
+func truncatedJoin(items []string, maxItems int) string {
+	if maxItems <= 0 || len(items) <= maxItems {
+		return strings.Join(items, "\n")
+	}
+	return strings.Join(items[:maxItems], "\n") + fmt.Sprintf("\n... and %d more", len(items)-maxItems)
 }
 
 // readFileContent reads file content as string.
