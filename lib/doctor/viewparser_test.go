@@ -341,6 +341,29 @@ func TestParseViewSQL_QuotedSchemaQualified(t *testing.T) {
 		"should strip quotes from table name")
 }
 
+func TestParseViewSQL_JoinWithUsing(t *testing.T) {
+	sql := `SELECT 'user'::text AS subject_type,
+    user_id::text AS subject_id,
+    'member' AS relation,
+    'org'::text AS object_type,
+    org_id::text AS object_id
+   FROM users
+     JOIN organizations USING (org_id);`
+
+	vd, err := parseViewSQL(sql)
+	require.NoError(t, err)
+
+	require.Len(t, vd.Branches, 1)
+	require.Len(t, vd.Branches[0].SourceTables, 2)
+	assert.Equal(t, "users", vd.Branches[0].SourceTables[0].Name)
+	assert.Equal(t, "organizations", vd.Branches[0].SourceTables[1].Name)
+}
+
+func TestTableRef_String(t *testing.T) {
+	assert.Equal(t, "users", TableRef{Name: "users"}.String())
+	assert.Equal(t, "public.users", TableRef{Schema: "public", Name: "users"}.String())
+}
+
 func TestHasBareUnion(t *testing.T) {
 	tests := []struct {
 		name     string

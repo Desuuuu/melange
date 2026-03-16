@@ -132,3 +132,23 @@ func TestHasColumnPrefix(t *testing.T) {
 		})
 	}
 }
+
+func TestRowCountSeverity(t *testing.T) {
+	sev, note := rowCountSeverity(500)
+	assert.Equal(t, StatusWarn, sev)
+	assert.Equal(t, "recommended for future scaling", note)
+
+	sev, note = rowCountSeverity(10000)
+	assert.Equal(t, StatusFail, sev)
+	assert.Contains(t, note, "critical")
+	assert.Contains(t, note, "10000")
+}
+
+func TestParseIndexColumns_CloseBeforeOpen(t *testing.T) {
+	assert.Nil(t, parseIndexColumns("CREATE INDEX ) ON t ("))
+}
+
+func TestParseIndexColumns_TrailingComma(t *testing.T) {
+	got := parseIndexColumns("CREATE INDEX idx ON t USING btree (a, b, )")
+	assert.Equal(t, []string{"a", "b"}, got)
+}
