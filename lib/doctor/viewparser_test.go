@@ -50,7 +50,8 @@ func TestParseViewSQL_Basic(t *testing.T) {
 
 	// First branch: organization_members
 	b0 := vd.Branches[0]
-	assert.Equal(t, "organization_members", b0.SourceTable)
+	require.Len(t, b0.SourceTables, 1)
+	assert.Equal(t, "organization_members", b0.SourceTables[0].Name)
 	assert.Equal(t, "user_id::text", b0.ColumnMapping["subject_id"])
 	assert.Equal(t, "organization_id::text", b0.ColumnMapping["object_id"])
 	assert.Equal(t, "role", b0.ColumnMapping["relation"])
@@ -72,7 +73,8 @@ func TestParseViewSQL_CaseWhen(t *testing.T) {
 
 	// Last branch: repository_bans with CASE WHEN
 	last := vd.Branches[3]
-	assert.Equal(t, "repository_bans", last.SourceTable)
+	require.Len(t, last.SourceTables, 1)
+	assert.Equal(t, "repository_bans", last.SourceTables[0].Name)
 
 	// CASE WHEN should still detect the cast on user_id
 	found := false
@@ -121,8 +123,9 @@ func TestParseViewSQL_SchemaQualified(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, vd.Branches, 1)
-	assert.Equal(t, "myschema", vd.Branches[0].SourceSchema)
-	assert.Equal(t, "org_members", vd.Branches[0].SourceTable)
+	require.Len(t, vd.Branches[0].SourceTables, 1)
+	assert.Equal(t, "myschema", vd.Branches[0].SourceTables[0].Schema)
+	assert.Equal(t, "org_members", vd.Branches[0].SourceTables[0].Name)
 }
 
 func TestParseViewSQL_WhereClause(t *testing.T) {
@@ -138,7 +141,8 @@ func TestParseViewSQL_WhereClause(t *testing.T) {
 	vd, err := parseViewSQL(sql)
 	require.NoError(t, err)
 	require.Len(t, vd.Branches, 1)
-	assert.Equal(t, "repositories", vd.Branches[0].SourceTable)
+	require.Len(t, vd.Branches[0].SourceTables, 1)
+	assert.Equal(t, "repositories", vd.Branches[0].SourceTables[0].Name)
 }
 
 func TestParseViewSQL_Empty(t *testing.T) {
@@ -162,7 +166,8 @@ func TestParseViewSQL_SingleBranch(t *testing.T) {
 
 	assert.False(t, vd.HasUnion)
 	assert.Len(t, vd.Branches, 1)
-	assert.Equal(t, "org_members", vd.Branches[0].SourceTable)
+	require.Len(t, vd.Branches[0].SourceTables, 1)
+	assert.Equal(t, "org_members", vd.Branches[0].SourceTables[0].Name)
 }
 
 func TestParseViewSQL_NoCasts(t *testing.T) {
@@ -178,6 +183,162 @@ func TestParseViewSQL_NoCasts(t *testing.T) {
 
 	require.Len(t, vd.Branches, 1)
 	assert.Empty(t, vd.Branches[0].CastColumns, "should have no cast columns")
+}
+
+func TestParseViewSQL_MultiTableFrom(t *testing.T) {
+	// Reproduces https://github.com/pthm/melange/issues/35
+	// pg_get_viewdef formats comma-joins across multiple lines.
+	sql := ` SELECT 'site'::text AS object_type,
+    (sites.id)::text AS object_id,
+    'organization'::text AS relation,
+    'org'::text AS subject_type,
+    organization.org_id AS subject_id
+   FROM sites,
+    organization
+UNION ALL
+ SELECT 'user'::text AS subject_type,
+    user_id::text AS subject_id,
+    role AS relation,
+    'team'::text AS object_type,
+    team_id::text AS object_id
+   FROM team_members;`
+
+	vd, err := parseViewSQL(sql)
+	require.NoError(t, err)
+
+	require.Len(t, vd.Branches, 2)
+
+	// First branch should have both tables from the cross join
+	b0 := vd.Branches[0]
+	require.Len(t, b0.SourceTables, 2)
+	assert.Equal(t, "sites", b0.SourceTables[0].Name)
+	assert.Equal(t, "organization", b0.SourceTables[1].Name)
+
+	// Second branch has a single table
+	b1 := vd.Branches[1]
+	require.Len(t, b1.SourceTables, 1)
+	assert.Equal(t, "team_members", b1.SourceTables[0].Name)
+}
+
+func TestParseViewSQL_MultiTableFromSingleLine(t *testing.T) {
+	sql := `SELECT 'user'::text AS subject_type,
+    user_id::text AS subject_id,
+    'member' AS relation,
+    'org'::text AS object_type,
+    org_id::text AS object_id
+   FROM users, organizations;`
+
+	vd, err := parseViewSQL(sql)
+	require.NoError(t, err)
+
+	require.Len(t, vd.Branches, 1)
+	require.Len(t, vd.Branches[0].SourceTables, 2)
+	assert.Equal(t, "users", vd.Branches[0].SourceTables[0].Name)
+	assert.Equal(t, "organizations", vd.Branches[0].SourceTables[1].Name)
+}
+
+func TestParseViewSQL_ExplicitJoin(t *testing.T) {
+	// pg_get_viewdef formats explicit JOINs across multiple lines.
+	sql := ` SELECT 'site'::text AS object_type,
+    (sites.id)::text AS object_id,
+    'organization'::text AS relation,
+    'org'::text AS subject_type,
+    organization.org_id AS subject_id
+   FROM sites
+     JOIN organization ON sites.org_id = organization.id
+UNION ALL
+ SELECT 'user'::text AS subject_type,
+    user_id::text AS subject_id,
+    role AS relation,
+    'team'::text AS object_type,
+    team_id::text AS object_id
+   FROM team_members;`
+
+	vd, err := parseViewSQL(sql)
+	require.NoError(t, err)
+
+	require.Len(t, vd.Branches, 2)
+
+	b0 := vd.Branches[0]
+	require.Len(t, b0.SourceTables, 2, "should find both tables from explicit JOIN")
+	assert.Equal(t, "sites", b0.SourceTables[0].Name)
+	assert.Equal(t, "organization", b0.SourceTables[1].Name)
+
+	b1 := vd.Branches[1]
+	require.Len(t, b1.SourceTables, 1)
+	assert.Equal(t, "team_members", b1.SourceTables[0].Name)
+}
+
+func TestParseViewSQL_LeftJoin(t *testing.T) {
+	sql := `SELECT 'user'::text AS subject_type,
+    user_id::text AS subject_id,
+    'member' AS relation,
+    'org'::text AS object_type,
+    org_id::text AS object_id
+   FROM users
+     LEFT JOIN organizations ON users.org_id = organizations.id;`
+
+	vd, err := parseViewSQL(sql)
+	require.NoError(t, err)
+
+	require.Len(t, vd.Branches, 1)
+	require.Len(t, vd.Branches[0].SourceTables, 2, "should find both tables from LEFT JOIN")
+	assert.Equal(t, "users", vd.Branches[0].SourceTables[0].Name)
+	assert.Equal(t, "organizations", vd.Branches[0].SourceTables[1].Name)
+}
+
+func TestParseViewSQL_OnlyKeyword(t *testing.T) {
+	// PostgreSQL's ONLY keyword excludes child tables in inheritance.
+	sql := `SELECT 'user'::text AS subject_type,
+    user_id::text AS subject_id,
+    role AS relation,
+    'org'::text AS object_type,
+    org_id::text AS object_id
+   FROM ONLY org_members;`
+
+	vd, err := parseViewSQL(sql)
+	require.NoError(t, err)
+
+	require.Len(t, vd.Branches, 1)
+	require.Len(t, vd.Branches[0].SourceTables, 1)
+	assert.Equal(t, "org_members", vd.Branches[0].SourceTables[0].Name,
+		"should skip ONLY keyword and extract table name")
+}
+
+func TestParseViewSQL_QuotedIdentifier(t *testing.T) {
+	sql := `SELECT 'user'::text AS subject_type,
+    user_id::text AS subject_id,
+    role AS relation,
+    'org'::text AS object_type,
+    org_id::text AS object_id
+   FROM "OrgMembers";`
+
+	vd, err := parseViewSQL(sql)
+	require.NoError(t, err)
+
+	require.Len(t, vd.Branches, 1)
+	require.Len(t, vd.Branches[0].SourceTables, 1)
+	assert.Equal(t, "OrgMembers", vd.Branches[0].SourceTables[0].Name,
+		"should strip quotes from identifier")
+}
+
+func TestParseViewSQL_QuotedSchemaQualified(t *testing.T) {
+	sql := `SELECT 'user'::text AS subject_type,
+    user_id::text AS subject_id,
+    'member' AS relation,
+    'org'::text AS object_type,
+    org_id::text AS object_id
+   FROM "MySchema"."OrgMembers";`
+
+	vd, err := parseViewSQL(sql)
+	require.NoError(t, err)
+
+	require.Len(t, vd.Branches, 1)
+	require.Len(t, vd.Branches[0].SourceTables, 1)
+	assert.Equal(t, "MySchema", vd.Branches[0].SourceTables[0].Schema,
+		"should strip quotes from schema")
+	assert.Equal(t, "OrgMembers", vd.Branches[0].SourceTables[0].Name,
+		"should strip quotes from table name")
 }
 
 func TestHasBareUnion(t *testing.T) {

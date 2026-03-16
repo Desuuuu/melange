@@ -68,11 +68,9 @@ func (d *Doctor) checkViewDefinition(ctx context.Context, report *Report) error 
 	// Report source tables
 	var tables []string
 	for _, b := range vd.Branches {
-		name := b.SourceTable
-		if b.SourceSchema != "" {
-			name = b.SourceSchema + "." + name
+		for _, t := range b.SourceTables {
+			tables = append(tables, t.String())
 		}
-		tables = append(tables, name)
 	}
 
 	report.AddCheck(CheckResult{
@@ -102,12 +100,14 @@ func (d *Doctor) checkExpressionIndexes(ctx context.Context, report *Report) err
 		if len(b.CastColumns) == 0 {
 			continue
 		}
-		info, ok := tableCasts[b.SourceTable]
-		if !ok {
-			info = &tableInfo{schema: b.SourceSchema}
-			tableCasts[b.SourceTable] = info
+		for _, t := range b.SourceTables {
+			info, ok := tableCasts[t.Name]
+			if !ok {
+				info = &tableInfo{schema: t.Schema}
+				tableCasts[t.Name] = info
+			}
+			info.casts = append(info.casts, b.CastColumns...)
 		}
-		info.casts = append(info.casts, b.CastColumns...)
 	}
 
 	if len(tableCasts) == 0 {

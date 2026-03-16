@@ -5,6 +5,20 @@ import (
 	"strings"
 )
 
+// TableRef identifies a source table, optionally schema-qualified.
+type TableRef struct {
+	Schema string // e.g., "public"
+	Name   string // e.g., "organization_members"
+}
+
+// String returns the optionally schema-qualified table name.
+func (t TableRef) String() string {
+	if t.Schema != "" {
+		return t.Schema + "." + t.Name
+	}
+	return t.Name
+}
+
 // ViewDefinition represents a parsed melange_tuples view definition.
 type ViewDefinition struct {
 	Branches []ViewBranch
@@ -14,8 +28,7 @@ type ViewDefinition struct {
 
 // ViewBranch represents one SELECT in the UNION ALL view.
 type ViewBranch struct {
-	SourceTable   string            // e.g., "organization_members"
-	SourceSchema  string            // e.g., "public"
+	SourceTables  []TableRef        // tables referenced in the FROM clause
 	ColumnMapping map[string]string // view alias -> source expression
 	CastColumns   []CastColumn
 }
@@ -129,6 +142,8 @@ func parseBranch(sql string) (*ViewBranch, error) {
 
 	// First pass: join multiline CASE...END into single logical lines.
 	lines := joinCaseExpressions(strings.Split(sql, "\n"))
+	// Second pass: join multi-line FROM clauses (comma-separated tables).
+	lines = joinFromClauses(lines)
 
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
@@ -144,15 +159,7 @@ func parseBranch(sql string) (*ViewBranch, error) {
 
 		// Parse FROM clause
 		if strings.HasPrefix(upper, "FROM ") {
-			table := parseFromClause(trimmed)
-			if table != "" {
-				if parts := strings.SplitN(table, ".", 2); len(parts) == 2 {
-					branch.SourceSchema = parts[0]
-					branch.SourceTable = parts[1]
-				} else {
-					branch.SourceTable = table
-				}
-			}
+			branch.SourceTables = parseFromTables(trimmed)
 			continue
 		}
 
@@ -186,7 +193,7 @@ func parseBranch(sql string) (*ViewBranch, error) {
 		}
 	}
 
-	if branch.SourceTable == "" {
+	if len(branch.SourceTables) == 0 {
 		return nil, fmt.Errorf("no FROM clause found")
 	}
 
@@ -254,21 +261,199 @@ func hasWord(s, word string) bool {
 	return true
 }
 
-// parseFromClause extracts the table name from a FROM line.
-func parseFromClause(line string) string {
-	// "FROM schema.table" or "FROM table" possibly with trailing alias
+// joinFromClauses joins multi-line FROM clauses into single lines.
+// Handles two continuation patterns:
+//  1. Comma-separated tables: FROM a,\n  b  →  FROM a, b
+//  2. Explicit JOINs: FROM a\n  JOIN b ON ...  →  FROM a JOIN b ON ...
+func joinFromClauses(lines []string) []string {
+	var result []string
+	i := 0
+	for i < len(lines) {
+		trimmed := strings.TrimSpace(lines[i])
+		upper := strings.ToUpper(trimmed)
+
+		if !strings.HasPrefix(upper, "FROM ") {
+			result = append(result, lines[i])
+			i++
+			continue
+		}
+
+		joined := trimmed
+		for i+1 < len(lines) {
+			next := strings.TrimSpace(lines[i+1])
+			nextUpper := strings.ToUpper(next)
+
+			// Comma continuation: current line ends with comma, next is a table name.
+			if strings.HasSuffix(strings.TrimSpace(joined), ",") {
+				if next == "" ||
+					strings.HasPrefix(nextUpper, "WHERE") ||
+					strings.HasPrefix(nextUpper, "SELECT") ||
+					strings.HasPrefix(nextUpper, "UNION") {
+					break
+				}
+				i++
+				joined = joined + " " + next
+				continue
+			}
+
+			// JOIN continuation: next line starts with a JOIN keyword.
+			if isJoinKeyword(nextUpper) {
+				i++
+				joined = joined + " " + next
+				continue
+			}
+
+			break
+		}
+		result = append(result, joined)
+		i++
+	}
+	return result
+}
+
+// isJoinKeyword reports whether the line starts with a SQL JOIN keyword.
+func isJoinKeyword(upper string) bool {
+	prefixes := []string{
+		"JOIN ", "INNER JOIN ", "CROSS JOIN ",
+		"LEFT JOIN ", "LEFT OUTER JOIN ",
+		"RIGHT JOIN ", "RIGHT OUTER JOIN ",
+		"FULL JOIN ", "FULL OUTER JOIN ",
+		"NATURAL JOIN ",
+	}
+	for _, p := range prefixes {
+		if strings.HasPrefix(upper, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// parseFromTables extracts all table references from a FROM clause.
+// Handles comma-separated cross joins, explicit JOINs, the ONLY keyword,
+// schema-qualified names, and quoted identifiers.
+func parseFromTables(line string) []TableRef {
 	upper := strings.ToUpper(line)
 	idx := strings.Index(upper, "FROM ")
 	if idx == -1 {
-		return ""
+		return nil
 	}
 	rest := strings.TrimSpace(line[idx+5:])
-	// Take first word (table name), stop at whitespace or semicolon
-	parts := strings.Fields(rest)
-	if len(parts) == 0 {
-		return ""
+
+	// Split on JOIN keywords first, then on commas within each segment.
+	segments := splitOnJoins(rest)
+
+	var tables []TableRef
+	for _, seg := range segments {
+		// Remove ON/USING conditions so they don't interfere with comma splitting.
+		seg = cutJoinCondition(seg)
+
+		for _, part := range strings.Split(seg, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			// First word is the table name; ignore aliases.
+			words := strings.Fields(part)
+			if len(words) == 0 {
+				continue
+			}
+			name := strings.TrimRight(words[0], ";")
+
+			// Skip PostgreSQL's ONLY keyword (table inheritance).
+			if strings.EqualFold(name, "ONLY") {
+				if len(words) > 1 {
+					name = strings.TrimRight(words[1], ";")
+				} else {
+					continue
+				}
+			}
+
+			if name == "" {
+				continue
+			}
+
+			ref := parseTableRef(name)
+			tables = append(tables, ref)
+		}
 	}
-	return strings.TrimRight(parts[0], ";")
+	return tables
+}
+
+// splitOnJoins splits a FROM clause body on JOIN keywords, returning each
+// segment (the text before/between/after JOINs). The JOIN keyword itself
+// is consumed.
+func splitOnJoins(s string) []string {
+	upper := strings.ToUpper(s)
+	var segments []string
+	remaining := s
+	remainingUpper := upper
+
+	for {
+		best := -1
+		bestLen := 0
+		for _, kw := range joinKeywords {
+			if pos := strings.Index(remainingUpper, kw); pos != -1 && (best == -1 || pos < best) {
+				best = pos
+				bestLen = len(kw)
+			}
+		}
+		if best == -1 {
+			segments = append(segments, remaining)
+			break
+		}
+		segments = append(segments, remaining[:best])
+		remaining = remaining[best+bestLen:]
+		remainingUpper = remainingUpper[best+bestLen:]
+	}
+	return segments
+}
+
+var joinKeywords = []string{
+	" NATURAL JOIN ", " CROSS JOIN ",
+	" LEFT OUTER JOIN ", " RIGHT OUTER JOIN ", " FULL OUTER JOIN ",
+	" INNER JOIN ", " LEFT JOIN ", " RIGHT JOIN ", " FULL JOIN ",
+	" JOIN ",
+}
+
+// cutJoinCondition removes an ON or USING clause from a FROM/JOIN segment
+// so that table names can be extracted cleanly.
+func cutJoinCondition(s string) string {
+	upper := strings.ToUpper(s)
+	if idx := strings.Index(upper, " ON "); idx != -1 {
+		return s[:idx]
+	}
+	if idx := strings.Index(upper, " USING "); idx != -1 {
+		return s[:idx]
+	}
+	return s
+}
+
+// parseTableRef parses a possibly schema-qualified, possibly quoted table name
+// like `"MySchema"."MyTable"` or `public.users` into a TableRef.
+func parseTableRef(name string) TableRef {
+	// Split on "." that separates quoted identifiers (e.g., "schema"."table").
+	if idx := strings.Index(name, "\".\""); idx != -1 {
+		return TableRef{
+			Schema: unquoteIdentifier(name[:idx+1]),
+			Name:   unquoteIdentifier(name[idx+2:]),
+		}
+	}
+	// Split on plain dot for unquoted schema.table.
+	if dotParts := strings.SplitN(name, ".", 2); len(dotParts) == 2 {
+		return TableRef{
+			Schema: unquoteIdentifier(dotParts[0]),
+			Name:   unquoteIdentifier(dotParts[1]),
+		}
+	}
+	return TableRef{Name: unquoteIdentifier(name)}
+}
+
+// unquoteIdentifier strips surrounding double quotes from a SQL identifier.
+func unquoteIdentifier(s string) string {
+	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+		return s[1 : len(s)-1]
+	}
+	return s
 }
 
 // parseColumnExpr parses "expression AS alias" and returns (alias, expression).
