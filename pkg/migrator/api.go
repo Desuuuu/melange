@@ -134,7 +134,7 @@ func MigrateWithOptions(ctx context.Context, db Execer, schemaPath string, opts 
 		}
 		if lastMigration != nil &&
 			lastMigration.SchemaChecksum == checksum &&
-			lastMigration.CodegenVersion == CodegenVersion {
+			lastMigration.CodegenVersion == CodegenVersion() {
 			return true, nil // Skipped
 		}
 	}

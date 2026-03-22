@@ -129,7 +129,7 @@ Three comparison modes determine orphaned functions to drop:
 		opts := compiler.MigrationOptions{
 			Version:        version.Version,
 			SchemaChecksum: migrator.ComputeSchemaChecksum(string(schemaContent)),
-			CodegenVersion: migrator.CodegenVersion,
+			CodegenVersion: migrator.CodegenVersion(),
 			NamedFunctions: namedFunctions,
 		}
 

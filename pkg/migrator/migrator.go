@@ -15,6 +15,7 @@ import (
 	"github.com/lib/pq"
 
 	"github.com/pthm/melange/lib/sqlgen"
+	"github.com/pthm/melange/lib/version"
 	"github.com/pthm/melange/pkg/schema"
 )
 
@@ -41,13 +42,12 @@ var (
 	collectNamedFunctions  = sqlgen.CollectNamedFunctions
 )
 
-// CodegenVersion is incremented when SQL generation templates or logic change.
-// This ensures migrations re-run even if schema checksum matches.
-// Bump this when:
-//   - SQL templates in tooling/schema/templates/ change
-//   - Codegen logic in schema/codegen.go or schema/codegen_list.go changes
-//   - New function patterns are added
-const CodegenVersion = "1"
+// CodegenVersion returns the melange version used to identify which codegen
+// produced the SQL. Combined with function checksums, this allows skip detection
+// and change tracking across migrations.
+func CodegenVersion() string {
+	return version.Short()
+}
 
 // MigrateOptions controls migration behavior (public API).
 type MigrateOptions struct {
@@ -79,10 +79,10 @@ type InternalMigrateOptions struct {
 
 // MigrationRecord represents a row in the melange_migrations table.
 type MigrationRecord struct {
-	MelangeVersion    string
-	SchemaChecksum    string
-	CodegenVersion    string
-	FunctionNames     []string
+	MelangeVersion string
+	SchemaChecksum string
+	CodegenVersion string
+	FunctionNames  []string
 	// FunctionChecksums maps function_name → SHA256(sql_body) for each function
 	// installed by this migration. Populated only when the database schema includes
 	// the function_checksums column (added in v0.7.3). Nil on records written by
@@ -430,7 +430,7 @@ func shouldSkipMigration(lastMigration *MigrationRecord, schemaChecksum string) 
 		return false
 	}
 	return lastMigration.SchemaChecksum == schemaChecksum &&
-		lastMigration.CodegenVersion == CodegenVersion
+		lastMigration.CodegenVersion == CodegenVersion()
 }
 
 // getCurrentFunctions returns all melange-generated function names from pg_proc.
@@ -506,7 +506,7 @@ func (m *Migrator) insertMigrationRecord(ctx context.Context, db Execer, melange
 	_, err = db.ExecContext(ctx, `
 		INSERT INTO melange_migrations (melange_version, schema_checksum, codegen_version, function_names, function_checksums)
 		VALUES ($1, $2, $3, $4, $5)
-	`, melangeVersion, schemaChecksum, CodegenVersion, pq.Array(functionNames), string(checksumsJSON))
+	`, melangeVersion, schemaChecksum, CodegenVersion(), pq.Array(functionNames), string(checksumsJSON))
 	if err != nil {
 		return fmt.Errorf("inserting migration record: %w", err)
 	}
@@ -649,7 +649,7 @@ func (m *Migrator) outputDryRun(w io.Writer, melangeVersion, schemaChecksum stri
 		_, _ = fmt.Fprintf(w, "-- Melange version: %s\n", melangeVersion)
 	}
 	_, _ = fmt.Fprintf(w, "-- Schema checksum: %s\n", schemaChecksum)
-	_, _ = fmt.Fprintf(w, "-- Codegen version: %s\n", CodegenVersion)
+	_, _ = fmt.Fprintf(w, "-- Codegen version: %s\n", CodegenVersion())
 	_, _ = fmt.Fprintf(w, "\n")
 
 	// Migrations DDL
@@ -731,5 +731,5 @@ func (m *Migrator) outputDryRun(w io.Writer, melangeVersion, schemaChecksum stri
 		quotedFunctions[i] = fmt.Sprintf("'%s'", fn)
 	}
 	_, _ = fmt.Fprintf(w, "INSERT INTO melange_migrations (melange_version, schema_checksum, codegen_version, function_names)\n")
-	_, _ = fmt.Fprintf(w, "VALUES ('%s', '%s', '%s', ARRAY[%s]);\n", melangeVersion, schemaChecksum, CodegenVersion, strings.Join(quotedFunctions, ", "))
+	_, _ = fmt.Fprintf(w, "VALUES ('%s', '%s', '%s', ARRAY[%s]);\n", melangeVersion, schemaChecksum, CodegenVersion(), strings.Join(quotedFunctions, ", "))
 }

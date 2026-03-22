@@ -2,7 +2,6 @@ package test
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -64,7 +63,9 @@ type organization
 		"check_permission",
 	}
 
-	assertFunctionsExist(t, db, ctx, expectedFunctions)
+	for _, fn := range expectedFunctions {
+		assert.True(t, functionExists(t, ctx, db, fn), "function %s should exist", fn)
+	}
 
 	// Second migration (forced): triggers orphan detection which previously
 	// dropped functions due to case mismatch between CollectFunctionNames
@@ -73,23 +74,7 @@ type organization
 	err = m.MigrateWithTypesAndOptions(ctx, types, opts)
 	require.NoError(t, err)
 
-	assertFunctionsExist(t, db, ctx, expectedFunctions)
-}
-
-func assertFunctionsExist(t *testing.T, db *sql.DB, ctx context.Context, expectedFunctions []string) {
-	t.Helper()
-
 	for _, fn := range expectedFunctions {
-		var exists bool
-		err := db.QueryRowContext(ctx, `
-			SELECT EXISTS (
-				SELECT 1 FROM pg_proc p
-				JOIN pg_namespace n ON p.pronamespace = n.oid
-				WHERE n.nspname = current_schema()
-				AND p.proname = $1
-			)
-		`, fn).Scan(&exists)
-		require.NoError(t, err)
-		assert.True(t, exists, "function %s should exist", fn)
+		assert.True(t, functionExists(t, ctx, db, fn), "function %s should exist after re-migration", fn)
 	}
 }

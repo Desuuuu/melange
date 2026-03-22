@@ -98,7 +98,7 @@ func TestShouldSkipMigration(t *testing.T) {
 	t.Run("matching checksum and codegen version skips", func(t *testing.T) {
 		rec := &MigrationRecord{
 			SchemaChecksum: checksum,
-			CodegenVersion: CodegenVersion,
+			CodegenVersion: CodegenVersion(),
 		}
 		if !shouldSkipMigration(rec, checksum) {
 			t.Error("should skip when checksum and codegen version match")
@@ -108,7 +108,7 @@ func TestShouldSkipMigration(t *testing.T) {
 	t.Run("different checksum does not skip", func(t *testing.T) {
 		rec := &MigrationRecord{
 			SchemaChecksum: "different-checksum",
-			CodegenVersion: CodegenVersion,
+			CodegenVersion: CodegenVersion(),
 		}
 		if shouldSkipMigration(rec, checksum) {
 			t.Error("should not skip when checksum differs")
@@ -169,7 +169,7 @@ func TestOutputDryRun(t *testing.T) {
 		if !strings.Contains(output, "-- Schema checksum: abc123") {
 			t.Error("should contain schema checksum")
 		}
-		if !strings.Contains(output, "-- Codegen version: "+CodegenVersion) {
+		if !strings.Contains(output, "-- Codegen version: "+CodegenVersion()) {
 			t.Error("should contain codegen version")
 		}
 
