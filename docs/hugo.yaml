@@ -55,13 +55,14 @@ params:
     width: wide
 
   page:
-    width: normal
+    width: wide
     tabs:
       sync: true
 
   footer:
     displayCopyright: false
-    displayPoweredBy: false
+    displayPoweredBy: true
+    width: wide
 
   editURL:
     enable: true

@@ -10,3 +10,46 @@
   --primary-saturation: 85%;
   --primary-lightness: 50%;
 }
+
+/* Typography: Space Mono for headings, Space Grotesk for body */
+body {
+  font-family: 'Space Grotesk', sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Space Mono', monospace;
+}
+
+code, pre, kbd {
+  font-family: 'Space Mono', monospace;
+}
+
+/* Sharp square corners - remove all border-radius */
+* {
+  border-radius: 0 !important;
+}
+
+/* Sidebar: always expanded, no collapsing */
+.hextra-sidebar-container li > .hextra-sidebar-children {
+  height: auto !important;
+  padding-top: 0.25rem !important;
+  overflow: visible !important;
+}
+
+.hextra-sidebar-collapsible-button {
+  display: none !important;
+}
+
+/* Align custom footer section with the rest of the layout */
+.hextra-custom-footer {
+  margin-left: auto;
+  margin-right: auto;
+  padding-top: 1.5rem;
+  padding-bottom: 0.75rem;
+}
+
+/* Reduce spacing on the powered-by section below */
+.hextra-custom-footer + div {
+  padding-top: 0;
+  padding-bottom: 1.5rem;
+}

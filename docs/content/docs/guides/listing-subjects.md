@@ -7,9 +7,9 @@ The `ListSubjects` operation returns all subjects of a given type that have a sp
 
 ## Basic Usage
 
-{{< tabs items="Go,TypeScript,SQL" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 // Find all users who can read a repository (with pagination)
 userIDs, cursor, err := checker.ListSubjects(ctx,
@@ -27,7 +27,7 @@ if err != nil {
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 // Find all users who can read a repository (with pagination)
 const { rows } = await pool.query(
@@ -41,7 +41,7 @@ const nextCursor = rows.length > 0 ? rows[0].next_cursor : null;
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="SQL" >}}
 ```sql
 -- Get all users who can view document 456 (first 100)
 SELECT subject_id, next_cursor
@@ -79,9 +79,9 @@ Returns a table with `subject_id` and `next_cursor` columns. The `next_cursor` v
 
 Use cursor-based pagination to iterate through large result sets efficiently:
 
-{{< tabs items="Go,TypeScript,SQL" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 // Paginate through all users with access
 var cursor *string
@@ -109,7 +109,7 @@ for {
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 // Paginate through all users with access
 let cursor: string | null = null;
@@ -131,7 +131,7 @@ while (true) {
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="SQL" >}}
 ```sql
 -- First page
 SELECT subject_id, next_cursor
@@ -155,9 +155,9 @@ FROM list_accessible_subjects('document', '456', 'viewer', 'user', 100, 'user-10
 
 For convenience, use the `ListSubjectsAll` helper which automatically paginates through all results:
 
-{{< tabs items="Go" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 // Get all users who can read (auto-paginates internally)
 allUserIDs, err := checker.ListSubjectsAll(ctx,
@@ -184,9 +184,9 @@ if err != nil {
 
 Display who has access to a resource:
 
-{{< tabs items="Go,TypeScript,SQL" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 func GetAccessList(ctx context.Context, repo Repository) ([]AccessEntry, error) {
     var entries []AccessEntry
@@ -213,7 +213,7 @@ func GetAccessList(ctx context.Context, repo Repository) ([]AccessEntry, error) 
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 interface AccessEntry {
   userId: string;
@@ -243,7 +243,7 @@ async function getAccessList(repoId: string): Promise<AccessEntry[]> {
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="SQL" >}}
 ```sql
 -- Join with users table to get full user records (NULL limit returns all)
 SELECT u.*
@@ -259,9 +259,9 @@ JOIN list_accessible_subjects('document', '456', 'viewer', 'user', NULL, NULL) a
 
 Verify at least one user has access:
 
-{{< tabs items="Go,TypeScript,SQL" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 func HasAnyViewers(ctx context.Context, doc Document) (bool, error) {
     // Use Limit: 1 to efficiently check for any results
@@ -275,7 +275,7 @@ func HasAnyViewers(ctx context.Context, doc Document) (bool, error) {
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 async function hasAnyViewers(docId: string): Promise<boolean> {
   // Use limit 1 to efficiently check for any results
@@ -288,7 +288,7 @@ async function hasAnyViewers(docId: string): Promise<boolean> {
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="SQL" >}}
 ```sql
 -- Check if anyone has access (returns true/false)
 SELECT EXISTS(
@@ -301,9 +301,9 @@ SELECT EXISTS(
 
 ### Notify All Users with Access
 
-{{< tabs items="Go,TypeScript" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 func NotifyCollaborators(ctx context.Context, repo Repository, message string) error {
     // Get all users who can read (using ListSubjectsAll)
@@ -323,7 +323,7 @@ func NotifyCollaborators(ctx context.Context, repo Repository, message string) e
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 async function notifyCollaborators(repoId: string, message: string): Promise<void> {
   // Get all users who can read (NULL limit returns all)
@@ -347,9 +347,9 @@ async function notifyCollaborators(repoId: string, message: string): Promise<voi
 
 ### Audit Access
 
-{{< tabs items="Go,TypeScript" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 type AccessAuditEntry struct {
     ObjectType string
@@ -386,7 +386,7 @@ func AuditRepositoryAccess(ctx context.Context, repo Repository) ([]AccessAuditE
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 interface AccessAuditEntry {
   objectType: string;
@@ -451,9 +451,9 @@ Note: `DecisionAllow` cannot enumerate "all" subjects, so it performs the normal
 
 Like `ListObjects`, `ListSubjects` does **not** use the permission cache. Implement application-level caching if needed:
 
-{{< tabs items="Go,TypeScript" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 func (c *CachedChecker) ListSubjectsAll(ctx context.Context, object ObjectLike, relation RelationLike, subjectType ObjectType) ([]string, error) {
     key := fmt.Sprintf("subjects:%s:%s:%s:%s",
@@ -478,7 +478,7 @@ func (c *CachedChecker) ListSubjectsAll(ctx context.Context, object ObjectLike, 
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 import { LRUCache } from 'lru-cache';
 
@@ -520,9 +520,9 @@ async function listSubjectsCached(
 
 Compare who has what level of access:
 
-{{< tabs items="Go,TypeScript" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 type PermissionBreakdown struct {
     Owners  []string
@@ -571,7 +571,7 @@ func GetPermissionBreakdown(ctx context.Context, repo Repository) (*PermissionBr
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 interface PermissionBreakdown {
   owners: string[];
@@ -605,9 +605,9 @@ async function getPermissionBreakdown(repoId: string): Promise<PermissionBreakdo
 
 When teams are modeled as objects:
 
-{{< tabs items="Go,TypeScript,SQL" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 // Schema: type team
 //           relations
@@ -626,7 +626,7 @@ func GetTeamMembers(ctx context.Context, teamID string) ([]User, error) {
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 // Schema: type team
 //           relations
@@ -644,7 +644,7 @@ async function getTeamMembers(teamId: string): Promise<User[]> {
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="SQL" >}}
 ```sql
 -- Get all team members with access (userset filter)
 -- Note: Use 'team#member' as subject_type to filter by userset
@@ -659,9 +659,9 @@ FROM list_accessible_subjects('document', '456', 'viewer', 'team#member', NULL, 
 
 Paginated queries across multiple calls can observe changes between pages. For consistency-critical flows, run paging inside a transaction with repeatable-read or snapshot semantics:
 
-{{< tabs items="Go,SQL" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 // For consistent pagination across pages, use a transaction
 tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
@@ -691,7 +691,7 @@ tx.Commit()
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="SQL" >}}
 ```sql
 -- For consistent pagination, use a transaction
 BEGIN ISOLATION LEVEL REPEATABLE READ;

@@ -7,9 +7,9 @@ The permission check API evaluates whether a subject has a specific relation on 
 
 ## Basic Permission Check
 
-{{< tabs items="Go,TypeScript,SQL" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 import "github.com/pthm/melange/melange"
 
@@ -36,7 +36,7 @@ The Checker accepts any type implementing the `Querier` interface:
 - `*sql.Conn` - Single connection
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 import { Pool } from 'pg';
 import { Checker } from '@pthm/melange';
@@ -58,7 +58,7 @@ if (!decision.allowed) {
 The Checker accepts any object implementing the `Queryable` interface. The `pg` Pool and Client both satisfy this. Use adapters for other drivers.
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="SQL" >}}
 ```sql
 -- Check if user 123 can read repository 456
 SELECT check_permission('user', '123', 'can_read', 'repository', '456');
@@ -78,9 +78,9 @@ WHERE check_permission('user', '123', 'viewer', 'document', d.id::text) = 1;
 
 Use generated code or implement type-safe interfaces for cleaner code:
 
-{{< tabs items="Go,TypeScript" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 Implement `SubjectLike` and `ObjectLike` on your domain models:
 
 ```go
@@ -119,7 +119,7 @@ allowed, err := checker.Check(ctx,
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 Create factory functions for cleaner code:
 
 ```typescript
@@ -164,9 +164,9 @@ const allowed = await check(
 
 Enable caching to reduce database load for repeated checks:
 
-{{< tabs items="Go,TypeScript" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 cache := melange.NewCache(melange.WithTTL(time.Minute))
 checker := melange.NewChecker(db, melange.WithCache(cache))
@@ -230,7 +230,7 @@ func (c *RedisCache) Get(subject Object, relation Relation, object Object) (bool
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 import { Checker, MemoryCache } from '@pthm/melange';
 
@@ -284,9 +284,9 @@ const checker = new Checker(pool, { cache: new RedisCache(redis) });
 
 Bypass database checks for testing or admin tools:
 
-{{< tabs items="Go,TypeScript" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 // Always allow - for admin tools or testing authorized paths
 checker := melange.NewChecker(nil, melange.WithDecision(melange.DecisionAllow))
@@ -317,7 +317,7 @@ Decision precedence (when `WithContextDecision` is enabled):
 3. Database check
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 import { Checker, DecisionAllow, DecisionDeny } from '@pthm/melange';
 
@@ -349,9 +349,9 @@ function authMiddleware(req, res, next) {
 
 Permission checks work within transactions and see uncommitted changes:
 
-{{< tabs items="Go,TypeScript,SQL" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 tx, err := db.BeginTx(ctx, nil)
 if err != nil {
@@ -379,7 +379,7 @@ if err := tx.Commit(); err != nil {
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 import { Checker } from '@pthm/melange';
 
@@ -413,7 +413,7 @@ try {
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="SQL" >}}
 ```sql
 BEGIN;
 
@@ -436,9 +436,9 @@ SELECT check_permission('user', '123', 'member', 'organization', '456');
 
 ## Error Handling
 
-{{< tabs items="Go,TypeScript,SQL" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ### Sentinel Errors
 
 ```go
@@ -483,7 +483,7 @@ Prefer `Check` for user-facing authorization. Use `Must` when:
 - In tests where failure should panic
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 import { Checker, MelangeError, ValidationError } from '@pthm/melange';
 
@@ -522,7 +522,7 @@ if (err) {
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="SQL" >}}
 ```sql
 -- Handle resolution too complex error (code M2002)
 DO $$
@@ -549,9 +549,9 @@ The M2002 error occurs when permission resolution exceeds the depth limit (25 le
 
 Create a cache per request to avoid stale data across requests:
 
-{{< tabs items="Go,TypeScript" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 func authMiddleware(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -564,7 +564,7 @@ func authMiddleware(next http.Handler) http.Handler {
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 import { Checker, MemoryCache } from '@pthm/melange';
 
@@ -600,9 +600,9 @@ async function handleRequest(req) {
 
 Use `NewBulkCheck` to check many permissions in a single SQL call instead of looping over individual checks:
 
-{{< tabs items="Go,TypeScript,SQL" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 bulk := checker.NewBulkCheck(ctx)
 
@@ -658,7 +658,7 @@ if r := results.GetByID("write-repo"); r != nil && r.IsAllowed() {
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 import { Checker } from '@pthm/melange';
 
@@ -707,7 +707,7 @@ if (writeResult?.allowed) {
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="SQL" >}}
 ```sql
 -- Check multiple permissions in a single call
 SELECT idx, allowed
@@ -735,9 +735,9 @@ FROM check_permission_bulk(
 
 Instead of checking each object individually, use `list_accessible_objects`:
 
-{{< tabs items="Go,TypeScript,SQL" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 // Inefficient: N database queries
 for _, repo := range repos {
@@ -760,7 +760,7 @@ for _, repo := range repos {
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 import { Checker } from '@pthm/melange';
 
@@ -782,7 +782,7 @@ const visible = repos.filter(repo => accessibleIds.has(repo.id));
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="SQL" >}}
 ```sql
 -- Inefficient: N function calls
 SELECT d.* FROM documents d

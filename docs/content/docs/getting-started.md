@@ -15,21 +15,21 @@ This guide walks you through installing Melange, defining an authorization model
 
 Install the Melange CLI for migrations and code generation:
 
-{{< tabs items="Homebrew,Go,Binary" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Homebrew" >}}
 ```bash
 brew install pthm/tap/melange
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```bash
 go install github.com/pthm/melange/cmd/melange@latest
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="Binary" >}}
 Download pre-built binaries from the [GitHub releases page](https://github.com/pthm/melange/releases).
 {{< /tab >}}
 
@@ -47,15 +47,15 @@ Melange will automatically check for updates and notify you when a new version i
 
 To update to the latest version:
 
-{{< tabs items="Homebrew,Go" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Homebrew" >}}
 ```bash
 brew upgrade melange
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```bash
 go install github.com/pthm/melange/cmd/melange@latest
 ```
@@ -132,9 +132,9 @@ melange init -y --schema melange/auth.fga --db postgres://prod:5432/app
 
 If you ran `melange init`, your schema file is already set up with a starter model. Here's what each template looks like:
 
-{{< tabs items="Organization RBAC,Document Sharing,Minimal" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Organization RBAC" >}}
 The default template. Defines organizations with a role hierarchy and repositories with permissions inherited from the parent org.
 
 ```fga
@@ -165,7 +165,7 @@ This model defines:
 - **Repositories** owned by organizations, with permissions inherited from the parent org via `member from org`
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="Document Sharing" >}}
 A Google Docs-style model where permissions cascade: owners can edit, editors can view.
 
 ```fga
@@ -186,7 +186,7 @@ This model defines:
 - Implied permissions: an `owner` is automatically an `editor`, and an `editor` is automatically a `viewer`
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="Minimal" >}}
 A bare-bones starting point — just a user type. Add your own types and relations from here.
 
 ```fga
@@ -281,9 +281,9 @@ If you use an external migration framework (golang-migrate, Atlas, Flyway, etc.)
 
 Generate constants and helpers for your language of choice:
 
-{{< tabs items="Go,TypeScript" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 With a config file (from Step 3), simply run:
 
 ```bash
@@ -303,7 +303,7 @@ melange generate client \
 This creates constants like `authz.RelCanRead`, `authz.User("123")`, and `authz.Repository("456")`.
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```bash
 melange generate client \
   --runtime typescript \
@@ -320,9 +320,9 @@ This creates TypeScript types and factory functions for type-safe permission che
 
 With migrations applied, you can check permissions using the generated SQL functions from any language, or use a client library for convenience.
 
-{{< tabs items="Go,TypeScript,SQL" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 package main
 
@@ -386,7 +386,7 @@ go get github.com/pthm/melange/melange
 The runtime module has zero external dependencies - only Go's standard library.
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 import { Pool } from 'pg';
 
@@ -438,7 +438,7 @@ npm install @pthm/melange
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="SQL" >}}
 ```sql
 -- Check permission directly in SQL
 SELECT check_permission('user', 'alice', 'can_read', 'repository', '123');
@@ -458,9 +458,9 @@ WHERE check_permission('user', 'alice', 'can_read', 'repository', r.id::text) = 
 
 Permission checks see uncommitted changes within the same transaction:
 
-{{< tabs items="Go,TypeScript,SQL" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 tx, err := db.BeginTx(ctx, nil)
 if err != nil {
@@ -488,7 +488,7 @@ if err := tx.Commit(); err != nil {
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 const client = await pool.connect();
 
@@ -519,7 +519,7 @@ try {
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="SQL" >}}
 ```sql
 BEGIN;
 
@@ -544,9 +544,9 @@ SELECT check_permission('user', '123', 'member', 'organization', '456');
 
 For high-throughput applications, enable caching to reduce database load:
 
-{{< tabs items="Go,TypeScript" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 cache := melange.NewCache(melange.WithTTL(time.Minute))
 checker := melange.NewChecker(db, melange.WithCache(cache))
@@ -559,7 +559,7 @@ allowed, _ = checker.Check(ctx, user, "can_read", repo) // ~83ns vs ~422μs
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 import { LRUCache } from 'lru-cache';
 

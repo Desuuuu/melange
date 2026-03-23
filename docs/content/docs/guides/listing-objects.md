@@ -7,9 +7,9 @@ The `ListObjects` operation returns all objects of a given type that a subject h
 
 ## Basic Usage
 
-{{< tabs items="Go,TypeScript,SQL" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 // Find all repositories user can read (with pagination)
 repoIDs, cursor, err := checker.ListObjects(ctx,
@@ -27,7 +27,7 @@ if err != nil {
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 // Find all repositories user can read (with pagination)
 const { rows } = await pool.query(
@@ -41,7 +41,7 @@ const nextCursor = rows.length > 0 ? rows[0].next_cursor : null;
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="SQL" >}}
 ```sql
 -- Get documents user 123 can view (first 100)
 SELECT object_id, next_cursor
@@ -79,9 +79,9 @@ Returns a table with `object_id` and `next_cursor` columns. The `next_cursor` va
 
 Use cursor-based pagination to iterate through large result sets efficiently:
 
-{{< tabs items="Go,TypeScript,SQL" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 // Paginate through all accessible repositories
 var cursor *string
@@ -109,7 +109,7 @@ for {
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 // Paginate through all accessible repositories
 let cursor: string | null = null;
@@ -131,7 +131,7 @@ while (true) {
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="SQL" >}}
 ```sql
 -- First page
 SELECT object_id, next_cursor
@@ -155,9 +155,9 @@ FROM list_accessible_objects('user', '123', 'viewer', 'document', 100, 'doc-100'
 
 For convenience, use the `ListObjectsAll` helper which automatically paginates through all results:
 
-{{< tabs items="Go" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 // Get all accessible repositories (auto-paginates internally)
 allRepoIDs, err := checker.ListObjectsAll(ctx,
@@ -182,9 +182,9 @@ if err != nil {
 
 ### Filter a List of Resources
 
-{{< tabs items="Go,TypeScript,SQL" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 // Get all repositories from your data layer
 repos, err := db.GetAllRepositories(ctx)
@@ -214,7 +214,7 @@ for _, repo := range repos {
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 // Get all repositories from your data layer
 const repos = await db.getAllRepositories();
@@ -231,7 +231,7 @@ const visibleRepos = repos.filter(repo => accessibleIds.has(repo.id));
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="SQL" >}}
 ```sql
 -- Join with domain table to get full records (NULL limit returns all)
 SELECT d.*
@@ -245,9 +245,9 @@ JOIN list_accessible_objects('user', '123', 'viewer', 'document', NULL, NULL) a
 
 ### Fetch Only Accessible Resources
 
-{{< tabs items="Go,TypeScript,SQL" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 // Get accessible IDs first (using ListObjectsAll)
 ids, err := checker.ListObjectsAll(ctx, user, "can_read", "document")
@@ -265,7 +265,7 @@ return docs, err
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 // Get accessible IDs first (NULL limit returns all)
 const { rows } = await pool.query(
@@ -284,7 +284,7 @@ return docs;
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="SQL" >}}
 ```sql
 -- Count accessible objects
 SELECT COUNT(*) FROM list_accessible_objects('user', '123', 'viewer', 'document', NULL, NULL);
@@ -295,9 +295,9 @@ SELECT COUNT(*) FROM list_accessible_objects('user', '123', 'viewer', 'document'
 
 ### Check Multiple Permissions
 
-{{< tabs items="Go,TypeScript" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 type RepoWithPermissions struct {
     Repository
@@ -349,7 +349,7 @@ for _, repo := range repos {
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 interface RepoWithPermissions {
   id: string;
@@ -416,9 +416,9 @@ Note: `DecisionAllow` cannot enumerate "all" objects, so it performs the normal 
 
 `ListObjects` does **not** use the single-tuple permission cache. For caching list results, implement application-level caching:
 
-{{< tabs items="Go,TypeScript" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 type CachedChecker struct {
     *melange.Checker
@@ -448,7 +448,7 @@ func (c *CachedChecker) ListObjectsAll(ctx context.Context, subject SubjectLike,
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 import { LRUCache } from 'lru-cache';
 
@@ -488,9 +488,9 @@ async function listObjectsCached(
 
 ### Paginated Access Control
 
-{{< tabs items="Go,TypeScript" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 func GetAccessibleRepos(ctx context.Context, user User, cursor *string, pageSize int) ([]Repository, *string, error) {
     // Get a page of accessible IDs with built-in pagination
@@ -511,7 +511,7 @@ func GetAccessibleRepos(ctx context.Context, user User, cursor *string, pageSize
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 async function getAccessibleRepos(
   userId: string,
@@ -542,9 +542,9 @@ async function getAccessibleRepos(
 
 ### Admin Override
 
-{{< tabs items="Go,TypeScript" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 func GetVisibleRepos(ctx context.Context, user User, isAdmin bool) ([]Repository, error) {
     if isAdmin {
@@ -563,7 +563,7 @@ func GetVisibleRepos(ctx context.Context, user User, isAdmin bool) ([]Repository
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="TypeScript" >}}
 ```typescript
 async function getVisibleRepos(userId: string, isAdmin: boolean): Promise<Repository[]> {
   if (isAdmin) {
@@ -589,9 +589,9 @@ async function getVisibleRepos(userId: string, isAdmin: boolean): Promise<Reposi
 
 Paginated queries across multiple calls can observe changes between pages. For consistency-critical flows, run paging inside a transaction with repeatable-read or snapshot semantics:
 
-{{< tabs items="Go,SQL" >}}
+{{< tabs >}}
 
-{{< tab >}}
+{{< tab name="Go" >}}
 ```go
 // For consistent pagination across pages, use a transaction
 tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
@@ -621,7 +621,7 @@ tx.Commit()
 ```
 {{< /tab >}}
 
-{{< tab >}}
+{{< tab name="SQL" >}}
 ```sql
 -- For consistent pagination, use a transaction
 BEGIN ISOLATION LEVEL REPEATABLE READ;

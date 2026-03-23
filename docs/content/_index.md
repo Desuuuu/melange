@@ -3,7 +3,7 @@ title: Melange
 layout: hextra-home
 ---
 
-{{< hextra/hero-container image="/images/mascot.png" imageWidth="400" imageHeight="400" imageClass="hx:my-auto" class="hx:items-center" >}}
+{{< hextra/hero-container >}}
 
 {{< hextra/hero-badge >}}
   <div class="hx:w-2 hx:h-2 hx:rounded-full hx:bg-primary-400"></div>
