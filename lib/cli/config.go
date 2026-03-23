@@ -41,20 +41,31 @@ type DatabaseConfig struct {
 
 // GenerateConfig holds code generation settings.
 type GenerateConfig struct {
-	Client ClientConfig `mapstructure:"client"`
+	Client    ClientConfig       `mapstructure:"client"`
+	Migration MigrationGenConfig `mapstructure:"migration"`
 }
 
 // ClientConfig holds client code generation settings.
 type ClientConfig struct {
 	Runtime string `mapstructure:"runtime"`
-	Schema  string `mapstructure:"schema"`
 	Output  string `mapstructure:"output"`
 	Package string `mapstructure:"package"`
 	Filter  string `mapstructure:"filter"`
 	IDType  string `mapstructure:"id_type"`
 }
 
-// MigrateConfig holds migration settings.
+// MigrationGenConfig holds settings for `melange generate migration`, which
+// produces versioned SQL files for use with external migration frameworks.
+// This is distinct from MigrateConfig, which controls `melange migrate` (the
+// built-in apply-to-database workflow). Configuring both for the same database
+// is discouraged; the migrate command warns when generate.migration.output is set.
+type MigrationGenConfig struct {
+	Output string `mapstructure:"output"`
+	Name   string `mapstructure:"name"`
+	Format string `mapstructure:"format"`
+}
+
+// MigrateConfig holds settings for `melange migrate` (builtin migration).
 type MigrateConfig struct {
 	DryRun bool `mapstructure:"dry_run"`
 	Force  bool `mapstructure:"force"`
@@ -123,11 +134,15 @@ func setDefaults(v *viper.Viper) {
 
 	// Generate client defaults
 	v.SetDefault("generate.client.runtime", "")
-	v.SetDefault("generate.client.schema", "")
 	v.SetDefault("generate.client.output", "")
 	v.SetDefault("generate.client.package", "authz")
 	v.SetDefault("generate.client.filter", "")
 	v.SetDefault("generate.client.id_type", "string")
+
+	// Generate migration defaults
+	v.SetDefault("generate.migration.output", "")
+	v.SetDefault("generate.migration.name", "melange")
+	v.SetDefault("generate.migration.format", "split")
 
 	// Migrate defaults
 	v.SetDefault("migrate.dry_run", false)
@@ -235,13 +250,4 @@ func (c *Config) DSN() (string, error) {
 	}
 
 	return u.String(), nil
-}
-
-// ResolvedSchema returns the effective schema path,
-// with generate.client.schema taking precedence over top-level schema (for generate command).
-func (c *Config) ResolvedSchema() string {
-	if c.Generate.Client.Schema != "" {
-		return c.Generate.Client.Schema
-	}
-	return c.Schema
 }

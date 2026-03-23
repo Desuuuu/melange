@@ -42,13 +42,15 @@ flowchart LR
 
 ### Compile Time
 
-When you run `melange migrate`, the compiler:
+When you run `melange migrate` (or `melange generate migration`), the compiler:
 
 1. **Parses** your OpenFGA schema
 2. **Analyzes** relation patterns (direct, implied, union, intersection, etc.)
 3. **Computes** the transitive closure of role hierarchies
 4. **Generates** specialized SQL functions for each relation
-5. **Installs** the functions into your PostgreSQL database
+5. **Installs** the functions into PostgreSQL (`migrate`) or writes them as versioned SQL files (`generate migration`)
+
+See [Running Migrations](../migrations/) for guidance on choosing between the two approaches.
 
 ### Runtime
 
@@ -245,14 +247,14 @@ This approach means:
 - **Transaction awareness**: Permission checks see uncommitted changes
 - **Real-time consistency**: Tuples always reflect current database state
 
-See [Tuples View](./tuples-view.md) for detailed guidance on mapping your domain tables.
+See [Tuples View](../tuples-view/) for detailed guidance on mapping your domain tables.
 
 ## OpenFGA Compatibility
 
 Melange provides **full OpenFGA Schema 1.1 compatibility** (excluding conditions). The same `.fga` schema files work with both Melange and OpenFGA, continuously validated against the official OpenFGA test suite.
 
 {{< cards cols="1" >}}
-{{< card link="../reference/openfga-compatibility" title="OpenFGA Compatibility" subtitle="Supported features, limitations, and behavioral compatibility details" icon="check-circle" >}}
+{{< card link="../../reference/openfga-compatibility" title="OpenFGA Compatibility" subtitle="Supported features, limitations, and behavioral compatibility details" icon="check-circle" >}}
 {{< /cards >}}
 
 ## Performance
@@ -260,7 +262,7 @@ Melange provides **full OpenFGA Schema 1.1 compatibility** (excluding conditions
 Compiled SQL functions deliver fast permission checks (typically 300-600 μs) with **O(1) constant time scaling** — specialization, precomputed closures, and in-database execution eliminate runtime overhead.
 
 {{< cards cols="1" >}}
-{{< card link="../reference/performance" title="Performance Guide" subtitle="Detailed benchmarks, optimization strategies, and caching configuration" icon="chart-bar" >}}
+{{< card link="../../reference/performance" title="Performance Guide" subtitle="Detailed benchmarks, optimization strategies, and caching configuration" icon="chart-bar" >}}
 {{< /cards >}}
 
 ## Summary
