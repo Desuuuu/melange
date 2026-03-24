@@ -30,6 +30,7 @@ package parser
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -39,20 +40,44 @@ import (
 	"github.com/pthm/melange/pkg/schema"
 )
 
-// ParseSchema reads an OpenFGA .fga file and returns type definitions.
-// Uses the official OpenFGA language parser to ensure compatibility with
-// the OpenFGA ecosystem and tooling.
+// ParseSchema reads an OpenFGA schema and returns type definitions.
+// Accepts either a single .fga file or an fga.mod manifest for modular schemas.
 //
-// The parser extracts type definitions, relations, and metadata that are
-// then converted to melange's internal representation for code generation
-// and database migration.
+// For single .fga files, uses the existing single-file parser.
+// For fga.mod manifests, reads all referenced module files and merges them
+// into a unified model using the upstream OpenFGA library.
 func ParseSchema(path string) ([]schema.TypeDefinition, error) {
+	if filepath.Base(path) == "fga.mod" {
+		return ParseModularSchema(path)
+	}
+
 	content, err := os.ReadFile(path) //nolint:gosec // path is from trusted source
 	if err != nil {
 		return nil, fmt.Errorf("reading schema file: %w", err)
 	}
 
 	return ParseSchemaString(string(content))
+}
+
+// ParseModularSchema parses an fga.mod manifest and all referenced module
+// files, merging them into a unified set of type definitions.
+//
+// Uses the upstream OpenFGA library for manifest parsing (TransformModFile),
+// module merging (TransformModuleFilesToModel), and all validation including
+// duplicate relation detection, undefined type extensions, and schema version
+// checks.
+func ParseModularSchema(manifestPath string) ([]schema.TypeDefinition, error) {
+	data, err := readManifest(manifestPath)
+	if err != nil {
+		return nil, err
+	}
+
+	model, err := transformer.TransformModuleFilesToModel(data.Modules, data.SchemaVersion)
+	if err != nil {
+		return nil, fmt.Errorf("compiling modules: %w", err)
+	}
+
+	return convertModel(model), nil
 }
 
 // ParseSchemaString parses OpenFGA DSL content and returns type definitions.
