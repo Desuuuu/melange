@@ -120,7 +120,7 @@ Supported runtimes: ` + strings.Join(clientgen.ListRuntimes(), ", "),
 func init() {
 	f := generateClientCmd.Flags()
 	f.StringVar(&genClientRuntime, "runtime", "", "target runtime: "+strings.Join(clientgen.ListRuntimes(), ", "))
-	f.StringVar(&genClientSchema, "schema", "", "path to schema.fga file")
+	f.StringVar(&genClientSchema, "schema", "", "path to schema.fga or fga.mod file")
 	f.StringVar(&genClientOutput, "output", "", "output directory or file path (default: stdout)")
 	f.StringVar(&genClientPackage, "package", "", "package/module name (default: authz)")
 	f.StringVar(&genClientFilter, "filter", "", "relation prefix filter (e.g., can_)")

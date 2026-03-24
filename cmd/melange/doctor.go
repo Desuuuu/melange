@@ -46,7 +46,7 @@ var doctorCmd = &cobra.Command{
 func init() {
 	f := doctorCmd.Flags()
 	f.StringVar(&doctorDB, "db", "", "database URL")
-	f.StringVar(&doctorSchema, "schema", "", "path to schema.fga file")
+	f.StringVar(&doctorSchema, "schema", "", "path to schema.fga or fga.mod file")
 	f.BoolVar(&doctorVerbose, "verbose", false, "show detailed output")
 	f.BoolVar(&doctorSkipPerformance, "skip-performance", false, "skip performance checks")
 }

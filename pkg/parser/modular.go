@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/openfga/language/pkg/go/transformer"
 
@@ -57,12 +58,20 @@ func readManifest(manifestPath string) (*manifestData, error) {
 // ParseModularSchemaFromStrings parses pre-read module contents and merges
 // them into unified type definitions. Useful for testing and embedded schemas
 // where module files are already in memory.
+//
+// Module names are sorted for deterministic processing order.
 func ParseModularSchemaFromStrings(modules map[string]string, schemaVersion string) ([]schema.TypeDefinition, error) {
+	names := make([]string, 0, len(modules))
+	for name := range modules {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
 	moduleFiles := make([]transformer.ModuleFile, 0, len(modules))
-	for name, content := range modules {
+	for _, name := range names {
 		moduleFiles = append(moduleFiles, transformer.ModuleFile{
 			Name:     name,
-			Contents: content,
+			Contents: modules[name],
 		})
 	}
 

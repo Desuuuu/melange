@@ -16,8 +16,11 @@ var validateCmd = &cobra.Command{
 	Use:   "validate",
 	Short: "Validate schema syntax",
 	Long:  `Validate schema syntax using the OpenFGA parser.`,
-	Example: `  # Validate a specific schema file
+	Example: `  # Validate a single-file schema
   melange validate --schema schemas/schema.fga
+
+  # Validate a modular schema (fga.mod manifest)
+  melange validate --schema schemas/fga.mod
 
   # Validate using config file settings
   melange validate`,
@@ -50,5 +53,5 @@ var validateCmd = &cobra.Command{
 }
 
 func init() {
-	validateCmd.Flags().StringVar(&validateSchema, "schema", "", "path to schema.fga file")
+	validateCmd.Flags().StringVar(&validateSchema, "schema", "", "path to schema.fga or fga.mod file")
 }

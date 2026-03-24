@@ -40,6 +40,11 @@ import (
 	"github.com/pthm/melange/pkg/schema"
 )
 
+// IsModularSchema reports whether path points to an fga.mod manifest.
+func IsModularSchema(path string) bool {
+	return filepath.Base(path) == "fga.mod"
+}
+
 // ParseSchema reads an OpenFGA schema and returns type definitions.
 // Accepts either a single .fga file or an fga.mod manifest for modular schemas.
 //
@@ -47,7 +52,7 @@ import (
 // For fga.mod manifests, reads all referenced module files and merges them
 // into a unified model using the upstream OpenFGA library.
 func ParseSchema(path string) ([]schema.TypeDefinition, error) {
-	if filepath.Base(path) == "fga.mod" {
+	if IsModularSchema(path) {
 		return ParseModularSchema(path)
 	}
 
@@ -57,6 +62,21 @@ func ParseSchema(path string) ([]schema.TypeDefinition, error) {
 	}
 
 	return ParseSchemaString(string(content))
+}
+
+// ReadSchemaContent reads the full content of a schema for hashing purposes.
+// For single .fga files, returns the file bytes directly.
+// For fga.mod manifests, returns the manifest plus all referenced module files
+// concatenated in manifest order (deterministic).
+func ReadSchemaContent(path string) ([]byte, error) {
+	if IsModularSchema(path) {
+		return ReadManifestContents(path)
+	}
+	content, err := os.ReadFile(path) //nolint:gosec // path is from trusted source
+	if err != nil {
+		return nil, fmt.Errorf("reading schema file: %w", err)
+	}
+	return content, nil
 }
 
 // ParseModularSchema parses an fga.mod manifest and all referenced module

@@ -3,7 +3,6 @@ package migrator
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/pthm/melange/pkg/parser"
 )
@@ -109,13 +108,14 @@ func MigrateWithOptions(ctx context.Context, db Execer, schemaPath string, opts 
 		return false, fmt.Errorf("no schema found at %s", m.SchemaPath())
 	}
 
-	// Read schema content for checksum
-	schemaContent, err := os.ReadFile(m.SchemaPath())
+	// Read schema content for checksum. For fga.mod manifests, this includes
+	// the manifest itself plus all referenced module files.
+	schemaContent, err := parser.ReadSchemaContent(m.SchemaPath())
 	if err != nil {
-		return false, fmt.Errorf("reading schema file: %w", err)
+		return false, fmt.Errorf("reading schema: %w", err)
 	}
 
-	types, err := parser.ParseSchemaString(string(schemaContent))
+	types, err := parser.ParseSchema(m.SchemaPath())
 	if err != nil {
 		return false, fmt.Errorf("parsing schema: %w", err)
 	}
