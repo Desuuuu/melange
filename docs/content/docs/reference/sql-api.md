@@ -103,8 +103,8 @@ All five arrays **must** be the same length. Each position across the arrays for
 ### Return Value
 
 Returns a table with two columns:
-- `idx` — 1-based position corresponding to the input arrays
-- `allowed` — `1` for access granted, `0` for access denied
+- `idx` - 1-based position corresponding to the input arrays
+- `allowed` - `1` for access granted, `0` for access denied
 
 One row is returned per input check, in index order.
 

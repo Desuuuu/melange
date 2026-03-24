@@ -3,7 +3,7 @@ title: Contributing
 weight: 20
 ---
 
-This section covers how to contribute to Melange development, including running tests, benchmarks, and understanding the project structure.
+Melange compiles OpenFGA schemas into PostgreSQL functions through a multi-stage pipeline: parse the DSL, analyze relation patterns, compute transitive closures, generate specialized SQL, and install it. Understanding this pipeline is key to contributing effectively.
 
 ## Getting Started
 
@@ -33,41 +33,35 @@ go build -o bin/dumptest ./test/cmd/dumptest
 # Run all tests
 go test ./...
 
-# Run with verbose output
-go test -v ./...
+# Run OpenFGA compatibility suite
+just test-openfga
 
-# Run specific package
-go test -v ./test/...
+# Run benchmarks
+just bench-openfga
 ```
 
 ## Quick Links
 
 {{< cards >}}
+  {{< card link="architecture" title="Architecture" subtitle="Compilation pipeline, SQL generation, and key design decisions" >}}
+  {{< card link="adding-features" title="Adding Features" subtitle="Step-by-step guide for new OpenFGA feature support" >}}
   {{< card link="testing" title="Testing" subtitle="Run the OpenFGA compatibility test suite" >}}
   {{< card link="benchmarking" title="Benchmarking" subtitle="Performance testing and profiling" >}}
-  {{< card link="project-structure" title="Project Structure" subtitle="Understand the codebase layout" >}}
+  {{< card link="project-structure" title="Project Structure" subtitle="Codebase layout, modules, and key files" >}}
 {{< /cards >}}
 
 ## Development Workflow
 
-1. **Make changes** to the relevant files
-2. **Run tests** to ensure nothing breaks: `go test ./...`
-3. **Run the OpenFGA test suite** for compatibility: `just test-openfga`
-4. **Run benchmarks** if performance-sensitive: `just bench-openfga`
-5. **Submit a pull request**
+1. **Make changes** to the relevant files.
+2. **Run tests** to ensure nothing breaks: `just test-openfga`
+3. **Run benchmarks** if performance-sensitive: `just bench-openfga`
+4. **Submit a pull request**.
 
-## Key Commands
+## Good First Issues
 
-```bash
-# Validate your schema changes
-melange validate --schema schemas/schema.fga
+Look for issues labelled `good first issue` on [GitHub](https://github.com/pthm/melange/issues). These typically involve:
 
-# Run OpenFGA compatibility tests
-just test-openfga
-
-# Run benchmarks
-just bench-openfga
-
-# Inspect a specific test case
-just dump-openfga <test_name>
-```
+- Adding test cases for edge cases in existing patterns.
+- Improving error messages or doctor check output.
+- Documentation improvements.
+- Small refactors with clear scope.

@@ -24,7 +24,7 @@ Melange automatically discovers a configuration file by checking each directory 
 The search starts in the current directory and walks up parent directories until a `.git` directory is found (repository boundary) or 25 levels are reached. The first match wins.
 
 {{< callout type="info" >}}
-The `melange/` directory convention is the default when you run `melange init`. Existing `melange.yaml` files at the project root continue to work — both layouts are fully supported.
+The `melange/` directory convention is the default when you run `melange init`. Existing `melange.yaml` files at the project root continue to work. Both layouts are fully supported.
 {{< /callout >}}
 
 You can override auto-discovery with `--config`:
@@ -164,7 +164,7 @@ Configure under `generate.migration:`:
 | `format` | string | `split` | Output format: `split` or `single` |
 
 {{< callout type="warning" >}}
-Do not configure both `generate.migration.output` and use `melange migrate` against the same database. The two strategies track state differently and mixing them causes warnings. See [Running Migrations](../../concepts/migrations/) for guidance.
+Do not configure both `generate.migration.output` and use `melange migrate` against the same database. The two strategies track state differently and mixing them causes warnings. See [Running Migrations](../../guides/migrations/) for guidance.
 {{< /callout >}}
 
 ### Migrate Settings
@@ -212,6 +212,9 @@ All configuration options can be set via environment variables with the `MELANGE
 | `MELANGE_MIGRATE_FORCE` | `migrate.force` |
 | `MELANGE_DOCTOR_VERBOSE` | `doctor.verbose` |
 | `MELANGE_DOCTOR_SKIP_PERFORMANCE` | `doctor.skip_performance` |
+| `CI` | _(special)_ |
+
+Setting `CI` to any value disables the automatic update check. Most CI providers set this automatically.
 
 **Example:**
 ```bash

@@ -8,7 +8,7 @@ Melange is an **OpenFGA-to-PostgreSQL compiler**. It takes your authorization mo
 
 ## What is an Authorization Compiler?
 
-If you've used [Protocol Buffers](https://protobuf.dev/), [GraphQL Code Generator](https://the-guild.dev/graphql/codegen), or similar tools, you're familiar with the pattern: define a schema, run a compiler, get optimized code tailored to your exact definitions.
+The pattern is similar to [Protocol Buffers](https://protobuf.dev/) or [GraphQL Code Generator](https://the-guild.dev/graphql/codegen): define a schema, run a compiler, get code tailored to your definitions.
 
 Melange applies this pattern to authorization:
 
@@ -18,7 +18,7 @@ flowchart LR
     melange --> funcs["PostgreSQL Functions<br/>(check_permission, etc)"]
 ```
 
-Instead of a generic runtime that interprets your model at query time, Melange generates **purpose-built SQL functions** for each relation in your schema. The result is authorization logic that runs as native PostgreSQL code, with all the benefits that brings: transaction awareness, query planning, and zero network hops.
+Instead of a generic runtime that interprets your model at query time, Melange generates a SQL function for each relation in your schema. The authorization logic runs as PostgreSQL code: transaction-aware, query-planned, and with zero network hops.
 
 ## How It Works
 
@@ -40,36 +40,41 @@ Read more about Melange's architecture and how it works [here](concepts/how-it-w
 
 ## Key Features
 
-- **Specialized Code Generation** - Each relation gets its own optimized check function, not a generic interpreter
+- **Per-Relation Code Generation** - Each relation gets its own check function, not a generic interpreter
 - **Works with Your Tables** - Permissions derived from a view over your existing data (no tuple sync)
 - **Transaction Aware** - Permission checks see uncommitted changes within the same transaction
 - **Language Agnostic** - Generated SQL functions callable from Go, Python, Node.js, or any PostgreSQL client
 - **OpenFGA Compatible** - Use familiar OpenFGA DSL syntax for authorization models
 
-## Quick Start
+## Getting Started
 
 {{< cards >}}
-  {{< card link="getting-started" title="Getting Started" subtitle="Install Melange, set up your first schema, and run permission checks" icon="play" >}}
+  {{< card link="getting-started/installation" title="Installation" subtitle="Install the Melange CLI via Homebrew, Go, or binary download" icon="download" >}}
+  {{< card link="getting-started/quick-start" title="Quick Start" subtitle="From zero to a working permission check" icon="play" >}}
+  {{< card link="getting-started/project-setup" title="Project Setup" subtitle="Configure the init wizard, starter templates, and code generation" icon="cog" >}}
 {{< /cards >}}
 
 ## Concepts
 
-Understand the core architecture and design of Melange.
+Architecture and design.
 
 {{< cards >}}
+  {{< card link="concepts/components" title="Key Components" subtitle="CLI, schema, tuples view, and runtime libraries" icon="template" >}}
   {{< card link="concepts/how-it-works" title="How It Works" subtitle="Specialized SQL generation, precomputed closures, and constant-time permission checks" icon="cog" >}}
   {{< card link="concepts/modelling" title="Authorization Modelling" subtitle="Write OpenFGA schemas to define your permission model" icon="document-text" >}}
   {{< card link="concepts/tuples-view" title="Tuples View" subtitle="Map your domain tables to authorization tuples" icon="database" >}}
 {{< /cards >}}
 
-## Client Libraries
+## Guides
 
-Melange includes client libraries for convenient access to the generated SQL functions. For direct SQL access from any language, see the [SQL API reference](reference/sql-api).
+Using Melange's client libraries, middleware patterns, and operational workflows. For direct SQL access, see the [SQL API reference](reference/sql-api).
 
 {{< cards >}}
   {{< card link="guides/checking-permissions" title="Checking Permissions" subtitle="Validate access using the Checker API" icon="shield-check" >}}
   {{< card link="guides/listing-objects" title="Listing Objects" subtitle="Find all objects a subject can access" icon="collection" >}}
   {{< card link="guides/listing-subjects" title="Listing Subjects" subtitle="Find all subjects with access to an object" icon="users" >}}
+  {{< card link="guides/caching" title="Caching" subtitle="In-memory, request-scoped, and custom cache strategies" icon="lightning-bolt" >}}
+  {{< card link="guides/troubleshooting" title="Troubleshooting" subtitle="Diagnose common issues with melange doctor" icon="search" >}}
 {{< /cards >}}
 
 ## Reference
@@ -79,7 +84,10 @@ Technical reference documentation.
 {{< cards >}}
   {{< card link="reference/cli" title="CLI Reference" subtitle="Commands for migrations, code generation, and validation" icon="terminal" >}}
   {{< card link="reference/configuration" title="Configuration" subtitle="Config files, environment variables, and precedence" icon="cog" >}}
+  {{< card link="reference/go-api" title="Go API" subtitle="Runtime types, Checker, bulk checks, caching, and decision overrides" icon="code" >}}
   {{< card link="reference/sql-api" title="SQL API" subtitle="Generated SQL functions for permission checks" icon="database" >}}
+  {{< card link="reference/errors" title="Errors" subtitle="Sentinel errors, validation codes, and error helpers" icon="exclamation-circle" >}}
+  {{< card link="reference/generated-code" title="Generated Code" subtitle="What melange generate client produces" icon="document-text" >}}
   {{< card link="reference/performance" title="Performance" subtitle="Benchmark results, optimization strategies, and scaling guidance" icon="lightning-bolt" >}}
   {{< card link="reference/openfga-compatibility" title="OpenFGA Compatibility" subtitle="Feature support table and migration guidance" icon="badge-check" >}}
 {{< /cards >}}

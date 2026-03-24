@@ -3,7 +3,7 @@ title: Listing Objects
 weight: 2
 ---
 
-The `ListObjects` operation returns all objects of a given type that a subject has a specific relation on. This answers the question: "What can this user access?"
+`ListObjects` returns all objects of a given type that a subject has a specific relation on.
 
 ## Basic Usage
 

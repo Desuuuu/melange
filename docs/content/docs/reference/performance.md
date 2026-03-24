@@ -205,7 +205,6 @@ Enable caching in your application:
 ```go
 cache := melange.NewCache(
     melange.WithTTL(time.Minute),
-    melange.WithMaxSize(10000),
 )
 checker := melange.NewChecker(db, melange.WithCache(cache))
 ```
@@ -304,16 +303,9 @@ CREATE INDEX idx_org_members_text
 
 See the [Tuples View](../../concepts/tuples-view/#performance-optimization) documentation for complete indexing guidance.
 
-### 4. Use Appropriate Scaling Strategies
+### 4. Index Source Tables and Use Expression Indexes
 
-| Scale           | Recommended Approach                                              |
-| --------------- | ----------------------------------------------------------------- |
-| < 10K tuples    | Regular view + source table indexes                               |
-| 10K-100K tuples | Regular view + expression indexes + caching                       |
-| 100K-1M tuples  | Regular view + expression indexes + caching, or materialized view |
-| > 1M tuples     | Dedicated table with trigger sync + caching                       |
-
-See [Tuples View Scaling Strategies](../../concepts/tuples-view/#scaling-strategies) for implementation details.
+Check operations are O(1) at all scales with proper indexes. The key optimizations are source table indexes (composite indexes covering the columns in your view) and expression indexes (for `::text` casts). See the [Scaling](../../guides/scaling/) guide for index patterns and alternative view strategies.
 
 ### 5. Use Pagination for Large Result Sets
 

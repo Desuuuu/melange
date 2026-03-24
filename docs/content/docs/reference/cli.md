@@ -417,7 +417,7 @@ func AnyUser() melange.Object {
 
 Generate versioned SQL migration files for use with external migration frameworks (golang-migrate, Atlas, Flyway, etc.). Instead of applying SQL directly like `melange migrate`, this command produces `.sql` files you commit, review, and apply through your existing workflow.
 
-For a conceptual overview of when to use this versus `melange migrate`, see [Running Migrations](../../concepts/migrations/).
+For a conceptual overview of when to use this versus `melange migrate`, see [Running Migrations](../../guides/migrations/).
 
 ```bash
 melange generate migration \
@@ -435,9 +435,9 @@ melange generate migration \
 | `--format`            | `split`              | Output format: `split` (`.up.sql`/`.down.sql`) or `single`    |
 | `--up`                | `false`              | Output only the UP migration (stdout mode only)                |
 | `--down`              | `false`              | Output only the DOWN migration (stdout mode only)              |
-| `--db`                | -                    | Database URL — compare against most recent migration record    |
-| `--git-ref`           | -                    | Git ref — compare against schema at that commit/branch/tag     |
-| `--previous-schema`   | -                    | File path — compare against a previous `.fga` file             |
+| `--db`                | -                    | Database URL. Compare against most recent migration record     |
+| `--git-ref`           | -                    | Git ref. Compare against schema at that commit/branch/tag      |
+| `--previous-schema`   | -                    | File path. Compare against a previous `.fga` file              |
 
 {{< callout type="info" >}}
 The three comparison flags (`--db`, `--git-ref`, `--previous-schema`) are mutually exclusive. When none is specified, a full migration is generated containing all functions.
@@ -469,9 +469,9 @@ melange generate migration --schema schemas/schema.fga --git-ref main --up | psq
 
 By default, the UP migration includes every generated function (full mode). To emit only what changed, use one of:
 
-- **`--db`** — Reads the previous function inventory from the `melange_migrations` table. Most precise, but requires database access.
-- **`--git-ref`** — Compiles the schema from a git ref and compares. No database needed — ideal for CI.
-- **`--previous-schema`** — Compiles a previous schema from a local file and compares.
+- **`--db`** - Reads the previous function inventory from the `melange_migrations` table. Most precise, but requires database access.
+- **`--git-ref`** - Compiles the schema from a git ref and compares. No database needed, suitable for CI.
+- **`--previous-schema`** - Compiles a previous schema from a local file and compares.
 
 When a comparison mode is active:
 
@@ -482,7 +482,7 @@ When a comparison mode is active:
 **Examples:**
 
 ```bash
-# First migration (full — all functions)
+# First migration (full - all functions)
 melange generate migration \
   --schema schemas/schema.fga \
   --output db/migrations
@@ -764,12 +764,12 @@ melange validate --schema schemas/schema.fga && \
 If you use golang-migrate, Atlas, Flyway, or a similar tool, replace `melange migrate` with `melange generate migration`:
 
 ```bash
-# First time — generate a full migration
+# First time - generate a full migration
 melange generate migration \
   --schema schemas/schema.fga \
   --output db/migrations
 
-# After schema changes — generate an incremental migration
+# After schema changes - generate an incremental migration
 melange generate migration \
   --schema schemas/schema.fga \
   --output db/migrations \
@@ -783,7 +783,7 @@ git commit -m "Add editor relation to document type"
 migrate -path db/migrations -database "$DATABASE_URL" up
 ```
 
-See [Running Migrations](../../concepts/migrations/) for guidance on choosing between built-in and external migration strategies.
+See [Running Migrations](../../guides/migrations/) for guidance on choosing between built-in and external migration strategies.
 
 ### Troubleshooting
 

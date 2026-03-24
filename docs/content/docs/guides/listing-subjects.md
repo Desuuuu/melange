@@ -3,7 +3,7 @@ title: Listing Subjects
 weight: 3
 ---
 
-The `ListSubjects` operation returns all subjects of a given type that have a specific relation on an object. This answers the question: "Who has access to this resource?"
+`ListSubjects` returns all subjects of a given type that have a specific relation on an object.
 
 ## Basic Usage
 

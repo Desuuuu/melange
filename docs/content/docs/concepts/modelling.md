@@ -1,6 +1,6 @@
 ---
 title: Authorization Modelling
-weight: 2
+weight: 3
 ---
 
 Melange uses [OpenFGA](https://openfga.dev)'s DSL syntax to define authorization models. This page covers the basics - for comprehensive modelling guidance, see the [OpenFGA documentation](https://openfga.dev/docs/modeling).

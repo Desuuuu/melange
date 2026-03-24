@@ -162,123 +162,12 @@ const allowed = await check(
 
 ## Caching
 
-Enable caching to reduce database load for repeated checks:
+Enable caching to avoid repeated database queries for the same permission check. See the [Caching guide](../caching/) for full details on TTL configuration, request-scoped caching, custom cache implementations, and cache invalidation strategies.
 
-{{< tabs >}}
-
-{{< tab name="Go" >}}
 ```go
 cache := melange.NewCache(melange.WithTTL(time.Minute))
 checker := melange.NewChecker(db, melange.WithCache(cache))
-
-// First check hits the database (~422μs)
-allowed, _ := checker.Check(ctx, user, "can_read", repo)
-
-// Subsequent checks hit the cache (~83ns)
-allowed, _ = checker.Check(ctx, user, "can_read", repo)
 ```
-
-Cache characteristics:
-- In-memory, process-local
-- Thread-safe
-- Caches both allowed and denied results
-- Configurable TTL
-
-### Cache API
-
-```go
-// Create cache
-cache := melange.NewCache()                           // No expiry
-cache := melange.NewCache(melange.WithTTL(time.Minute)) // 1 minute TTL
-
-// Manual cache operations
-allowed, err, found := cache.Get(subject, relation, object)
-if found {
-    // Use cached result
-}
-
-cache.Set(subject, relation, object, allowed, err)
-cache.Clear()
-size := cache.Size()
-```
-
-### Custom Cache Implementation
-
-Implement the `Cache` interface for distributed caches:
-
-```go
-type Cache interface {
-    Get(subject Object, relation Relation, object Object) (allowed bool, err error, ok bool)
-    Set(subject Object, relation Relation, object Object, allowed bool, err error)
-}
-
-// Example: Redis-backed cache
-type RedisCache struct {
-    client *redis.Client
-    ttl    time.Duration
-}
-
-func (c *RedisCache) Get(subject Object, relation Relation, object Object) (bool, error, bool) {
-    key := fmt.Sprintf("perm:%s:%s:%s:%s:%s",
-        subject.Type, subject.ID, relation, object.Type, object.ID)
-    val, err := c.client.Get(ctx, key).Result()
-    if err == redis.Nil {
-        return false, nil, false
-    }
-    // Parse and return cached result...
-}
-```
-{{< /tab >}}
-
-{{< tab name="TypeScript" >}}
-```typescript
-import { Checker, MemoryCache } from '@pthm/melange';
-
-const cache = new MemoryCache(60000); // 60 second TTL
-const checker = new Checker(pool, { cache });
-
-// First check hits the database
-const decision1 = await checker.check(user, 'can_read', repo);
-
-// Subsequent checks hit the cache
-const decision2 = await checker.check(user, 'can_read', repo);
-```
-
-Cache characteristics:
-- In-memory, process-local
-- Caches both allowed and denied results
-- Configurable TTL
-
-### Custom Cache Implementation
-
-Implement the `Cache` interface for distributed caches:
-
-```typescript
-import type { Cache, Decision } from '@pthm/melange';
-
-class RedisCache implements Cache {
-  constructor(private redis: Redis, private ttlSeconds = 60) {}
-
-  async get(key: string): Promise<Decision | undefined> {
-    const val = await this.redis.get(key);
-    if (val === null) return undefined;
-    return { allowed: val === '1' };
-  }
-
-  async set(key: string, value: Decision): Promise<void> {
-    await this.redis.setex(key, this.ttlSeconds, value.allowed ? '1' : '0');
-  }
-
-  async clear(): Promise<void> {
-    // Clear melange keys or flush
-  }
-}
-
-const checker = new Checker(pool, { cache: new RedisCache(redis) });
-```
-{{< /tab >}}
-
-{{< /tabs >}}
 
 ## Decision Overrides
 
@@ -321,17 +210,17 @@ Decision precedence (when `WithContextDecision` is enabled):
 ```typescript
 import { Checker, DecisionAllow, DecisionDeny } from '@pthm/melange';
 
-// Always allow — for admin tools or testing authorized paths
+// Always allow - for admin tools or testing authorized paths
 const allowChecker = new Checker(pool, { decision: DecisionAllow });
 
-// Always deny — for testing unauthorized paths
+// Always deny - for testing unauthorized paths
 const denyChecker = new Checker(pool, { decision: DecisionDeny });
 ```
 
 When a decision override is set, no database query is performed. This works with both `check()` and `newBulkCheck()`.
 
 ```typescript
-// In middleware — create request-scoped checker
+// In middleware - create request-scoped checker
 function authMiddleware(req, res, next) {
   if (req.user.isAdmin) {
     req.checker = new Checker(pool, { decision: DecisionAllow });
@@ -568,14 +457,14 @@ func authMiddleware(next http.Handler) http.Handler {
 ```typescript
 import { Checker, MemoryCache } from '@pthm/melange';
 
-// Express middleware — fresh cache per request
+// Express middleware - fresh cache per request
 function authMiddleware(req, res, next) {
   const cache = new MemoryCache(); // Fresh cache per request
   req.checker = new Checker(pool, { cache });
   next();
 }
 
-// In a handler — repeated checks are cached automatically
+// In a handler - repeated checks are cached automatically
 async function handleRequest(req) {
   const user = { type: 'user', id: req.userId };
 
@@ -606,7 +495,7 @@ Use `NewBulkCheck` to check many permissions in a single SQL call instead of loo
 ```go
 bulk := checker.NewBulkCheck(ctx)
 
-// Queue checks — all execute in one SQL call
+// Queue checks - all execute in one SQL call
 for _, repo := range repos {
     bulk.Add(user, "can_read", repo)
 }
@@ -724,7 +613,7 @@ FROM check_permission_bulk(
 {{< /tabs >}}
 
 {{< callout type="info" >}}
-**Deduplication**: Duplicate checks within a batch are automatically deduplicated — only unique permission tuples are sent to the database. Results are fanned out to all original positions.
+**Deduplication**: Duplicate checks within a batch are automatically deduplicated. Only unique permission tuples are sent to the database; results are fanned out to all original positions.
 {{< /callout >}}
 
 {{< callout type="warning" >}}

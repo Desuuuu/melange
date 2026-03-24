@@ -1,9 +1,9 @@
 ---
 title: How It Works
-weight: 1
+weight: 2
 ---
 
-Melange is an **OpenFGA-to-PostgreSQL compiler**. It reads your authorization model and compiles it into specialized SQL functions that execute permission checks directly in your database — no external service, no network hops, no tuple synchronization.
+Melange is an **OpenFGA-to-PostgreSQL compiler**. It reads your authorization model and compiles it into SQL functions that execute permission checks directly in your database. No external service, no network hops, no tuple synchronization.
 
 ## The Compiler Model
 
@@ -14,7 +14,7 @@ Like [Protocol Buffers](https://protobuf.dev/) compiles `.proto` files into lang
 | **Traditional FGA** | Interpreted at query time | Generic graph traversal |
 | **Melange** | Compiled at migration time | Purpose-built SQL functions |
 
-This compilation step is what enables Melange's performance — each relation in your schema gets its own optimized function, not a generic interpreter.
+This compilation step is what enables Melange's performance: each relation in your schema gets its own function rather than passing through a generic interpreter.
 
 ## Compilation Pipeline
 
@@ -61,7 +61,7 @@ SELECT check_permission('user', 'alice', 'can_read', 'document', '123');
 -- Returns 1 (allowed) or 0 (denied)
 ```
 
-The generated functions query a `melange_tuples` view that you define over your existing domain tables — no separate tuple storage required.
+The generated functions query a `melange_tuples` view that you define over your existing domain tables. No separate tuple storage is required.
 
 ## What the Compiler Generates
 
@@ -99,7 +99,7 @@ Melange compiles this into:
 
 ### Pattern-Specific Code Generation
 
-The compiler recognizes authorization patterns and generates optimized code for each:
+The compiler recognizes authorization patterns and generates code specific to each:
 
 | Pattern | Schema Syntax | Generated Code |
 |---------|--------------|----------------|
@@ -259,7 +259,7 @@ Melange provides **full OpenFGA Schema 1.1 compatibility** (excluding conditions
 
 ## Performance
 
-Compiled SQL functions deliver fast permission checks (typically 300-600 μs) with **O(1) constant time scaling** — specialization, precomputed closures, and in-database execution eliminate runtime overhead.
+Compiled SQL functions deliver permission checks in 300-600 μs for most patterns, with **O(1) scaling** as tuple count grows. Specialization, precomputed closures, and in-database execution eliminate the runtime overhead of graph traversal.
 
 {{< cards cols="1" >}}
 {{< card link="../../reference/performance" title="Performance Guide" subtitle="Detailed benchmarks, optimization strategies, and caching configuration" icon="chart-bar" >}}
@@ -267,11 +267,11 @@ Compiled SQL functions deliver fast permission checks (typically 300-600 μs) wi
 
 ## Summary
 
-Melange's compiler architecture delivers performance through:
+Melange's compiler architecture has four key properties:
 
-1. **Compile-time specialization**: Purpose-built SQL functions for each relation
+1. **Compile-time specialization**: A dedicated SQL function for each relation
 2. **Precomputed closure**: Role hierarchies resolved before runtime
 3. **View-based tuples**: Direct queries against your existing tables
-4. **Native SQL execution**: Leveraging PostgreSQL's query optimizer
+4. **Native SQL execution**: Uses PostgreSQL's query optimizer
 
-The result: fast permission checks (300-600 μs for most patterns) with full OpenFGA Schema 1.1 compatibility, without the operational complexity of a separate authorization service.
+This produces permission checks in 300-600 μs for most patterns, with full OpenFGA Schema 1.1 compatibility, without requiring a separate authorization service.
