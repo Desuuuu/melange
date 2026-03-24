@@ -16,15 +16,19 @@ import (
 )
 
 var (
-	initYes       bool
-	initNoInstall bool
-	initSchema    string
-	initDB        string
-	initTemplate  string
-	initRuntime   string
-	initOutput    string
-	initPackage   string
-	initIDType    string
+	initYes               bool
+	initNoInstall         bool
+	initSchema            string
+	initDB                string
+	initTemplate          string
+	initRuntime           string
+	initOutput            string
+	initPackage           string
+	initIDType            string
+	initMigrationStrategy string
+	initMigrationOutput   string
+	initMigrationFormat   string
+	initMigrationName     string
 )
 
 var initCmd = &cobra.Command{
@@ -62,20 +66,28 @@ func init() {
 	f.StringVar(&initOutput, "output", "", "client output directory")
 	f.StringVar(&initPackage, "package", "", "client package name (default: authz)")
 	f.StringVar(&initIDType, "id-type", "", "client ID type: string, int64, uuid.UUID")
+	f.StringVar(&initMigrationStrategy, "migration-strategy", "", "migration strategy: builtin, versioned")
+	f.StringVar(&initMigrationOutput, "migration-output", "", "versioned migration output directory (default: migrations/)")
+	f.StringVar(&initMigrationFormat, "migration-format", "", "versioned migration format: split, single")
+	f.StringVar(&initMigrationName, "migration-name", "", "versioned migration name suffix (default: melange)")
 }
 
 // initAnswers is the resolved configuration that flows through the entire init
 // lifecycle: populated by defaultAnswers, overridden by CLI flags, refined by
 // runWizard (when interactive), then written to disk by writeConfig and writeSchema.
 type initAnswers struct {
-	SchemaPath    string
-	Template      string
-	DatabaseURL   string
-	GenerateCode  bool
-	ClientRuntime string
-	ClientOutput  string
-	ClientPackage string
-	ClientIDType  string
+	SchemaPath        string
+	Template          string
+	DatabaseURL       string
+	GenerateCode      bool
+	ClientRuntime     string
+	ClientOutput      string
+	ClientPackage     string
+	ClientIDType      string
+	MigrationStrategy string // "builtin" or "versioned"
+	MigrationOutput   string
+	MigrationFormat   string
+	MigrationName     string
 }
 
 // detectedProject captures what kind of project exists in the current directory.
@@ -113,14 +125,18 @@ func detectProject() detectedProject {
 // overrides layer on top of these values, never below them.
 func defaultAnswers(proj detectedProject) initAnswers {
 	a := initAnswers{
-		SchemaPath:    "melange/schema.fga",
-		Template:      "org-rbac",
-		DatabaseURL:   "postgres://localhost:5432/mydb",
-		GenerateCode:  proj.runtime != "", // default to true if project detected
-		ClientRuntime: "go",
-		ClientOutput:  "internal/authz",
-		ClientPackage: "authz",
-		ClientIDType:  "string",
+		SchemaPath:        "melange/schema.fga",
+		Template:          "org-rbac",
+		DatabaseURL:       "postgres://localhost:5432/mydb",
+		GenerateCode:      proj.runtime != "", // default to true if project detected
+		ClientRuntime:     "go",
+		ClientOutput:      "internal/authz",
+		ClientPackage:     "authz",
+		ClientIDType:      "string",
+		MigrationStrategy: "builtin",
+		MigrationOutput:   "migrations/",
+		MigrationFormat:   "split",
+		MigrationName:     "melange",
 	}
 	if proj.runtime != "" {
 		a.ClientRuntime = proj.runtime
@@ -179,6 +195,18 @@ func runInit(_ *cobra.Command, _ []string) error {
 	}
 	if initIDType != "" {
 		answers.ClientIDType = initIDType
+	}
+	if initMigrationStrategy != "" {
+		answers.MigrationStrategy = initMigrationStrategy
+	}
+	if initMigrationOutput != "" {
+		answers.MigrationOutput = initMigrationOutput
+	}
+	if initMigrationFormat != "" {
+		answers.MigrationFormat = initMigrationFormat
+	}
+	if initMigrationName != "" {
+		answers.MigrationName = initMigrationName
 	}
 
 	if !initYes {
@@ -247,8 +275,12 @@ func runInit(_ *cobra.Command, _ []string) error {
 
 	fmt.Println()
 	fmt.Println("Next steps:")
-	fmt.Println("  melange validate    # Check your schema")
-	fmt.Println("  melange migrate     # Apply schema to database")
+	fmt.Println("  melange validate              # Check your schema")
+	if answers.MigrationStrategy == "versioned" {
+		fmt.Println("  melange generate migration    # Generate migration SQL files")
+	} else {
+		fmt.Println("  melange migrate               # Apply schema to database")
+	}
 
 	return nil
 }
@@ -339,6 +371,14 @@ func runWizard(a *initAnswers, proj detectedProject) error {
 			huh.NewInput().
 				Title("Database URL").
 				Value(&a.DatabaseURL),
+			huh.NewSelect[string]().
+				Title("Migration strategy").
+				Description("How should schema changes be applied to the database?").
+				Options(
+					huh.NewOption("Built-in (melange migrate)", "builtin"),
+					huh.NewOption("Versioned SQL files (golang-migrate, Atlas, Flyway, etc.)", "versioned"),
+				).
+				Value(&a.MigrationStrategy),
 			huh.NewConfirm().
 				Title("Generate client code?").
 				Value(&a.GenerateCode),
@@ -346,6 +386,30 @@ func runWizard(a *initAnswers, proj detectedProject) error {
 	).WithTheme(melangeTheme()).Run()
 	if err != nil {
 		return err
+	}
+
+	// Versioned migration prompts
+	if a.MigrationStrategy == "versioned" {
+		err := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Migration output directory").
+					Value(&a.MigrationOutput),
+				huh.NewSelect[string]().
+					Title("File format").
+					Options(
+						huh.NewOption("Split (separate up/down files)", "split"),
+						huh.NewOption("Single (combined file)", "single"),
+					).
+					Value(&a.MigrationFormat),
+				huh.NewInput().
+					Title("Migration name suffix").
+					Value(&a.MigrationName),
+			),
+		).WithTheme(melangeTheme()).Run()
+		if err != nil {
+			return err
+		}
 	}
 
 	// Client code generation prompts
@@ -439,9 +503,11 @@ type initDBConfig struct {
 }
 
 // initGenConfig is the generate section of the written config.
-// Package is omitted for non-Go runtimes (see initClientConfig).
+// Both Client and Migration are pointers so either block can be omitted
+// cleanly from the serialized YAML when not configured.
 type initGenConfig struct {
-	Client initClientConfig `json:"client"`
+	Client    *initClientConfig    `json:"client,omitempty"`
+	Migration *initMigrationConfig `json:"migration,omitempty"`
 }
 
 // initClientConfig holds client code generation settings in the written config.
@@ -451,6 +517,13 @@ type initClientConfig struct {
 	Output  string `json:"output"`
 	Package string `json:"package,omitempty"`
 	IDType  string `json:"id_type"`
+}
+
+// initMigrationConfig holds versioned migration settings in the written config.
+type initMigrationConfig struct {
+	Output string `json:"output"`
+	Format string `json:"format"`
+	Name   string `json:"name"`
 }
 
 // writeConfig serializes initAnswers to YAML and writes the config file at
@@ -466,19 +539,34 @@ func writeConfig(configPath string, a *initAnswers) error {
 		Database: initDBConfig{URL: a.DatabaseURL},
 	}
 
+	// Build the generate section only when client code or versioned migrations
+	// are requested, keeping the config file minimal.
+	var gen *initGenConfig
 	if a.GenerateCode {
-		gen := &initGenConfig{
-			Client: initClientConfig{
-				Runtime: a.ClientRuntime,
-				Output:  a.ClientOutput,
-				IDType:  a.ClientIDType,
-			},
+		if gen == nil {
+			gen = &initGenConfig{}
+		}
+		client := &initClientConfig{
+			Runtime: a.ClientRuntime,
+			Output:  a.ClientOutput,
+			IDType:  a.ClientIDType,
 		}
 		if a.ClientRuntime == "go" {
-			gen.Client.Package = a.ClientPackage
+			client.Package = a.ClientPackage
 		}
-		c.Generate = gen
+		gen.Client = client
 	}
+	if a.MigrationStrategy == "versioned" {
+		if gen == nil {
+			gen = &initGenConfig{}
+		}
+		gen.Migration = &initMigrationConfig{
+			Output: a.MigrationOutput,
+			Format: a.MigrationFormat,
+			Name:   a.MigrationName,
+		}
+	}
+	c.Generate = gen
 
 	data, err := yaml.Marshal(c)
 	if err != nil {
