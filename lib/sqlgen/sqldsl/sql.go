@@ -1,6 +1,8 @@
 package sqldsl
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"math"
 	"strings"
@@ -392,9 +394,74 @@ func Ident(name string) string {
 	return result.String()
 }
 
+// PostgresMaxIdentifierLength is the default maximum identifier length in PostgreSQL.
+const PostgresMaxIdentifierLength = 63
+
+// SafeIdentifier builds a SQL function name from a prefix, object type, relation,
+// and suffix. If the resulting identifier exceeds PostgreSQL's 63-byte limit,
+// the type and relation parts are truncated proportionally and an 8-character
+// hash is appended to ensure uniqueness.
+//
+// Examples:
+//
+//	SafeIdentifier("check_", "user", "admin", "_nw")       → "check_user_admin_nw"
+//	SafeIdentifier("check_", "my_group", "<very long>", "_nw") → "check_my_group_a_really_r_ab12cd34_nw"
+func SafeIdentifier(prefix, objectType, relation, suffix string) string {
+	typePart := Ident(objectType)
+	relPart := Ident(relation)
+	full := prefix + typePart + "_" + relPart + suffix
+	if len(full) <= PostgresMaxIdentifierLength {
+		return full
+	}
+
+	// Hash the original (unsanitized) names for stability.
+	h := sha256.Sum256([]byte(objectType + ":" + relation))
+	hash := hex.EncodeToString(h[:4]) // 8 hex chars
+
+	// Budget for type+relation combined (minus separators: "_" between them, "_" before hash).
+	budget := PostgresMaxIdentifierLength - len(prefix) - len(suffix) - len(hash) - 2
+	if budget < 2 {
+		// Degenerate case: just use the hash.
+		return prefix + hash + suffix
+	}
+
+	typePart, relPart = truncateProportionally(typePart, relPart, budget)
+	return prefix + typePart + "_" + relPart + "_" + hash + suffix
+}
+
+// truncateProportionally splits a character budget between two strings
+// proportional to their original lengths, trimming trailing underscores.
+func truncateProportionally(a, b string, budget int) (string, string) {
+	total := len(a) + len(b)
+	if total <= budget {
+		return a, b
+	}
+
+	aBudget := budget * len(a) / total
+	bBudget := budget - aBudget
+
+	// Ensure each part gets at least 1 character.
+	if aBudget < 1 {
+		aBudget = 1
+		bBudget = budget - 1
+	}
+	if bBudget < 1 {
+		bBudget = 1
+		aBudget = budget - 1
+	}
+
+	if aBudget < len(a) {
+		a = strings.TrimRight(a[:aBudget], "_")
+	}
+	if bBudget < len(b) {
+		b = strings.TrimRight(b[:bBudget], "_")
+	}
+	return a, b
+}
+
 // LateralFunction represents a LATERAL function call in a JOIN.
-// Example: LateralFunction{Name: "list_doc_viewer_subjects", Args: []Expr{...}, Alias: "s"}
-// Renders: LATERAL list_doc_viewer_subjects(...) AS s
+// Example: LateralFunction{Name: "list_doc_viewer_sub", Args: []Expr{...}, Alias: "s"}
+// Renders: LATERAL list_doc_viewer_sub(...) AS s
 type LateralFunction struct {
 	Name  string
 	Args  []Expr

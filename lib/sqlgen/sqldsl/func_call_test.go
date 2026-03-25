@@ -132,23 +132,23 @@ func TestInFunctionSelect_SQL(t *testing.T) {
 			name: "list objects function",
 			in: InFunctionSelect{
 				Expr:      Col{Table: "t", Column: "subject_id"},
-				FuncName:  "list_doc_viewer_objects",
+				FuncName:  "list_doc_viewer_obj",
 				Args:      []Expr{SubjectType, SubjectID, Null{}, Null{}},
 				Alias:     "obj",
 				SelectCol: "object_id",
 			},
-			want: "t.subject_id IN (SELECT obj.object_id FROM list_doc_viewer_objects(p_subject_type, p_subject_id, NULL, NULL) obj)",
+			want: "t.subject_id IN (SELECT obj.object_id FROM list_doc_viewer_obj(p_subject_type, p_subject_id, NULL, NULL) obj)",
 		},
 		{
 			name: "split_part expression",
 			in: InFunctionSelect{
 				Expr:      Raw("split_part(t.subject_id, '#', 1)"),
-				FuncName:  "list_group_member_objects",
+				FuncName:  "list_group_member_obj",
 				Args:      []Expr{SubjectType, SubjectID, Null{}, Null{}},
 				Alias:     "obj",
 				SelectCol: "object_id",
 			},
-			want: "split_part(t.subject_id, '#', 1) IN (SELECT obj.object_id FROM list_group_member_objects(p_subject_type, p_subject_id, NULL, NULL) obj)",
+			want: "split_part(t.subject_id, '#', 1) IN (SELECT obj.object_id FROM list_group_member_obj(p_subject_type, p_subject_id, NULL, NULL) obj)",
 		},
 	}
 
@@ -163,7 +163,7 @@ func TestInFunctionSelect_SQL(t *testing.T) {
 
 func TestListObjectsFunctionName(t *testing.T) {
 	got := ListObjectsFunctionName("document", "viewer")
-	want := "list_document_viewer_objects"
+	want := "list_document_viewer_obj"
 	if got != want {
 		t.Errorf("ListObjectsFunctionName() = %q, want %q", got, want)
 	}
@@ -171,8 +171,53 @@ func TestListObjectsFunctionName(t *testing.T) {
 
 func TestListSubjectsFunctionName(t *testing.T) {
 	got := ListSubjectsFunctionName("document", "viewer")
-	want := "list_document_viewer_subjects"
+	want := "list_document_viewer_sub"
 	if got != want {
 		t.Errorf("ListSubjectsFunctionName() = %q, want %q", got, want)
+	}
+}
+
+func TestSafeIdentifier_ShortNames(t *testing.T) {
+	// Short names should not be truncated or hashed
+	got := SafeIdentifier("check_", "user", "admin", "_nw")
+	want := "check_user_admin_nw"
+	if got != want {
+		t.Errorf("SafeIdentifier() = %q, want %q", got, want)
+	}
+}
+
+func TestSafeIdentifier_LongNames(t *testing.T) {
+	// Long names should be truncated with hash appended
+	got := SafeIdentifier("check_", "my_group", "a_really_really_really_really_reaaaaally_long_name", "_nw")
+	if len(got) > PostgresMaxIdentifierLength {
+		t.Errorf("SafeIdentifier() produced identifier of length %d, want <= %d: %q", len(got), PostgresMaxIdentifierLength, got)
+	}
+	// Should contain the hash (8 hex chars)
+	if len(got) < 8 {
+		t.Fatal("identifier too short")
+	}
+	// Should preserve some of the original names
+	if got[:6] != "check_" {
+		t.Errorf("SafeIdentifier() should preserve prefix, got %q", got)
+	}
+	if got[len(got)-3:] != "_nw" {
+		t.Errorf("SafeIdentifier() should preserve suffix, got %q", got)
+	}
+}
+
+func TestSafeIdentifier_Deterministic(t *testing.T) {
+	a := SafeIdentifier("check_", "my_group", "a_really_really_really_really_reaaaaally_long_name", "_nw")
+	b := SafeIdentifier("check_", "my_group", "a_really_really_really_really_reaaaaally_long_name", "_nw")
+	if a != b {
+		t.Errorf("SafeIdentifier() not deterministic: %q != %q", a, b)
+	}
+}
+
+func TestSafeIdentifier_UniquenessForSimilarNames(t *testing.T) {
+	// Two names that would truncate to the same prefix should get different hashes
+	a := SafeIdentifier("check_", "my_group", "a_really_really_really_really_reaaaaally_long_name_one", "_nw")
+	b := SafeIdentifier("check_", "my_group", "a_really_really_really_really_reaaaaally_long_name_two", "_nw")
+	if a == b {
+		t.Errorf("SafeIdentifier() collision: both produced %q", a)
 	}
 }
