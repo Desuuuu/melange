@@ -398,14 +398,25 @@ func Ident(name string) string {
 const PostgresMaxIdentifierLength = 63
 
 // SafeIdentifier builds a SQL function name from a prefix, object type, relation,
-// and suffix. If the resulting identifier exceeds PostgreSQL's 63-byte limit,
-// the type and relation parts are truncated proportionally and an 8-character
-// hash is appended to ensure uniqueness.
+// and suffix, joining type and relation with an underscore separator:
+//
+//	prefix + Ident(objectType) + "_" + Ident(relation) + suffix
+//
+// If the resulting identifier exceeds PostgreSQL's 63-byte limit, the type and
+// relation parts are truncated proportionally and an 8-character SHA-256 hash is
+// appended to ensure uniqueness.
+//
+// The 63-byte limit is measured with len() (bytes). This is correct because
+// Ident() normalises names to ASCII-only [a-z0-9_], so byte length equals
+// character length for all valid inputs.
+//
+// The hash is computed from the original (unsanitized) type and relation names so
+// that it remains stable even if Ident() behavior changes in the future.
 //
 // Examples:
 //
-//	SafeIdentifier("check_", "user", "admin", "_nw")       → "check_user_admin_nw"
-//	SafeIdentifier("check_", "my_group", "<very long>", "_nw") → "check_my_group_a_really_r_ab12cd34_nw"
+//	SafeIdentifier("check_", "user", "admin", "_nw")          → "check_user_admin_nw"
+//	SafeIdentifier("check_", "my_group", "<very long>", "_nw") → "check_my_gro_a_really_..._d70fe023_nw"
 func SafeIdentifier(prefix, objectType, relation, suffix string) string {
 	typePart := Ident(objectType)
 	relPart := Ident(relation)
@@ -419,9 +430,18 @@ func SafeIdentifier(prefix, objectType, relation, suffix string) string {
 	hash := hex.EncodeToString(h[:4]) // 8 hex chars
 
 	// Budget for type+relation combined (minus separators: "_" between them, "_" before hash).
-	budget := PostgresMaxIdentifierLength - len(prefix) - len(suffix) - len(hash) - 2
+	overhead := len(prefix) + len(suffix) + len(hash) + 2 // 2 = "_" separators
+	budget := PostgresMaxIdentifierLength - overhead
 	if budget < 2 {
-		// Degenerate case: just use the hash.
+		// Degenerate case: prefix+suffix+hash already consume the limit.
+		// Truncate the prefix to fit.
+		maxPrefix := PostgresMaxIdentifierLength - len(hash) - len(suffix)
+		if maxPrefix < 0 {
+			maxPrefix = 0
+		}
+		if maxPrefix < len(prefix) {
+			prefix = prefix[:maxPrefix]
+		}
 		return prefix + hash + suffix
 	}
 
@@ -430,8 +450,9 @@ func SafeIdentifier(prefix, objectType, relation, suffix string) string {
 }
 
 // truncateProportionally splits a character budget between two strings
-// proportional to their original lengths, trimming trailing underscores.
-func truncateProportionally(a, b string, budget int) (string, string) {
+// proportional to their original lengths, trimming trailing underscores
+// from each truncated part (but never reducing a part to empty).
+func truncateProportionally(a, b string, budget int) (aOut, bOut string) {
 	total := len(a) + len(b)
 	if total <= budget {
 		return a, b
@@ -451,12 +472,22 @@ func truncateProportionally(a, b string, budget int) (string, string) {
 	}
 
 	if aBudget < len(a) {
-		a = strings.TrimRight(a[:aBudget], "_")
+		a = trimTrailingUnderscores(a[:aBudget])
 	}
 	if bBudget < len(b) {
-		b = strings.TrimRight(b[:bBudget], "_")
+		b = trimTrailingUnderscores(b[:bBudget])
 	}
 	return a, b
+}
+
+// trimTrailingUnderscores removes trailing underscores from s but never
+// returns an empty string — at least the first character is always kept.
+func trimTrailingUnderscores(s string) string {
+	trimmed := strings.TrimRight(s, "_")
+	if trimmed == "" && s != "" {
+		return s[:1]
+	}
+	return trimmed
 }
 
 // LateralFunction represents a LATERAL function call in a JOIN.
