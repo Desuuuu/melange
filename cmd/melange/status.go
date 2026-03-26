@@ -38,7 +38,7 @@ var statusCmd = &cobra.Command{
 func init() {
 	f := statusCmd.Flags()
 	f.StringVar(&statusDB, "db", "", "database URL")
-	f.StringVar(&statusSchema, "schema", "", "path to schema.fga file")
+	f.StringVar(&statusSchema, "schema", "", "path to schema.fga or fga.mod file")
 }
 
 func runStatus(dsn, schemaPath string) error {

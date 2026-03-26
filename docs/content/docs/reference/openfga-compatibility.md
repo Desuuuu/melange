@@ -34,8 +34,8 @@ All Schema 1.1 tests pass, ensuring reliable compatibility with OpenFGA schemas.
 | **Schema 1.0**                           | ⚠️      | **Untested** | Parser potentially works, but untested      |
 | **Schema 1.1**                           | ✅      | **Full**     | Fully supported and tested                  |
 | **Conditions**                           | ❌      | **None**     | CEL expressions not supported               |
-| **Modular models**                       | ❌      | **None**     | Multi-file, `module`, `extend type`         |
-| **Schema 1.2**                           | ❌      | **None**     | Conditions, modules                         |
+| **Modular models**                       | ✅      | **Full**     | `fga.mod` manifests, `module`, `extend type`|
+| **Schema 1.2**                           | ⚠️      | **Partial**  | Modules supported; conditions not supported |
 
 ## Supported Features
 
@@ -117,6 +117,42 @@ allowed, err := checker.CheckWithContextualTuples(ctx, user, "can_read", doc, []
 })
 ```
 
+### Modular Models (Schema 1.2)
+
+Split authorization schemas across multiple files using `fga.mod` manifests:
+
+```yaml
+# fga.mod
+schema: '1.2'
+contents:
+  - core.fga
+  - issue-tracker/projects.fga
+  - wiki/spaces.fga
+```
+
+Each file declares a module and can extend types from other modules:
+
+```fga
+module wiki
+
+extend type organization
+  relations
+    define can_create_space: admin or member
+
+type space
+  relations
+    define organization: [organization]
+    define viewer: member from organization
+```
+
+Pass the manifest path instead of a single `.fga` file:
+
+```go
+err := migrator.Migrate(ctx, db, "schemas/fga.mod")
+```
+
+At compile time, all modules are merged into a unified schema. The generated SQL is identical whether you use a single file or modular models.
+
 ## Unsupported Features
 
 ### Conditions (Schema 1.2)
@@ -132,19 +168,6 @@ condition ip_allowed(user_ip: ipaddress) {
 define viewer: [user with ip_allowed]
 ```
 
-### Modular Models (Schema 1.2)
-
-Multi-file schemas and module extends are not supported:
-
-```fga
-# NOT SUPPORTED
-module base
-
-extend type document
-  relations
-    define new_relation: [user]
-```
-
 ## Migration Path to OpenFGA
 
 Melange is designed to be a stepping stone. If you outgrow its capabilities, you can migrate to the full OpenFGA service.
@@ -154,7 +177,6 @@ Melange is designed to be a stepping stone. If you outgrow its capabilities, you
 ### When to Consider Migrating
 
 - You need **conditions** (Schema 1.2) for context-aware authorization with CEL expressions
-- You need **modular models** for large multi-file schemas
 - You need a **dedicated authorization service** for horizontal scaling
 - Your **tuple volume** exceeds what PostgreSQL can handle efficiently
 

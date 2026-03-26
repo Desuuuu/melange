@@ -1,0 +1,185 @@
+# Melange-specific tests: Modular Model patterns
+# These test the authorization patterns that result from merging modular schemas.
+# The model below is the equivalent merged output of a multi-module schema with:
+#   - core module: user, organization (member, admin)
+#   - issue-tracker module: project, extend type organization (can_create_project)
+#   - wiki module: space, extend type organization (can_create_space)
+#
+# Test names are prefixed with "melange/" by the loader.
+
+tests:
+  # ---------------------------------------------------------------------------
+  # modular_basic_extension
+  # Tests that relations added via "extend type" work correctly after merging.
+  # Core org has member/admin; issue-tracker extends with can_create_project;
+  # wiki extends with can_create_space.
+  # ---------------------------------------------------------------------------
+  - name: modular_basic_extension
+    stages:
+      - model: |
+          model
+            schema 1.1
+
+          type user
+
+          type organization
+            relations
+              define member: [user]
+              define admin: [user]
+              define can_create_project: admin
+              define can_create_space: admin or member
+
+          type project
+            relations
+              define organization: [organization]
+              define owner: [user]
+              define viewer: member from organization
+
+          type space
+            relations
+              define organization: [organization]
+              define editor: [user]
+              define viewer: member from organization
+        tuples:
+          # Organization membership
+          - user: user:alice
+            relation: admin
+            object: organization:acme
+          - user: user:bob
+            relation: member
+            object: organization:acme
+          - user: user:charlie
+            relation: member
+            object: organization:acme
+          # Project setup
+          - user: organization:acme
+            relation: organization
+            object: project:atlas
+          - user: user:alice
+            relation: owner
+            object: project:atlas
+          # Space setup
+          - user: organization:acme
+            relation: organization
+            object: space:wiki-main
+          - user: user:alice
+            relation: editor
+            object: space:wiki-main
+        checkAssertions:
+          # Admin can create projects (from issue-tracker extension)
+          - name: admin_can_create_project
+            tuple:
+              user: user:alice
+              relation: can_create_project
+              object: organization:acme
+            expectation: true
+          # Member cannot create projects
+          - name: member_cannot_create_project
+            tuple:
+              user: user:bob
+              relation: can_create_project
+              object: organization:acme
+            expectation: false
+          # Admin can create spaces (from wiki extension)
+          - name: admin_can_create_space
+            tuple:
+              user: user:alice
+              relation: can_create_space
+              object: organization:acme
+            expectation: true
+          # Member can create spaces (wiki extension: admin or member)
+          - name: member_can_create_space
+            tuple:
+              user: user:bob
+              relation: can_create_space
+              object: organization:acme
+            expectation: true
+          # Unrelated user cannot create spaces
+          - name: outsider_cannot_create_space
+            tuple:
+              user: user:eve
+              relation: can_create_space
+              object: organization:acme
+            expectation: false
+          # Organization member can view project via TTU
+          - name: member_can_view_project
+            tuple:
+              user: user:bob
+              relation: viewer
+              object: project:atlas
+            expectation: true
+          # Organization member can view space via TTU
+          - name: member_can_view_space
+            tuple:
+              user: user:charlie
+              relation: viewer
+              object: space:wiki-main
+            expectation: true
+          # Outsider cannot view project
+          - name: outsider_cannot_view_project
+            tuple:
+              user: user:eve
+              relation: viewer
+              object: project:atlas
+            expectation: false
+
+  # ---------------------------------------------------------------------------
+  # modular_cross_module_references
+  # Tests that relations in one module can reference types from another module.
+  # The project type references organization (from core module).
+  # ---------------------------------------------------------------------------
+  - name: modular_cross_module_references
+    stages:
+      - model: |
+          model
+            schema 1.1
+
+          type user
+
+          type group
+            relations
+              define member: [user]
+
+          type organization
+            relations
+              define member: [user, group#member]
+              define admin: [user]
+
+          type document
+            relations
+              define organization: [organization]
+              define owner: [user]
+              define editor: [user, group#member]
+              define viewer: [user] or editor or member from organization
+        tuples:
+          # Group membership
+          - user: user:alice
+            relation: member
+            object: group:engineering
+          # Org membership via group
+          - user: group:engineering#member
+            relation: member
+            object: organization:acme
+          # Document setup
+          - user: organization:acme
+            relation: organization
+            object: document:spec
+          - user: user:bob
+            relation: owner
+            object: document:spec
+        checkAssertions:
+          # Alice is org member via group, can view document
+          - name: group_member_can_view_via_org
+            tuple:
+              user: user:alice
+              relation: viewer
+              object: document:spec
+            expectation: true
+          # Bob is owner but not org member, cannot view via org membership
+          # (owner is not in the viewer definition)
+          - name: owner_not_viewer_unless_in_org
+            tuple:
+              user: user:bob
+              relation: viewer
+              object: document:spec
+            expectation: false
